@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Seddo — Souvenir #JOJ2026</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23e8442e'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'>S</text></svg>">
+<style>
+  :root {
+    --seddo: #e8442e;
+    --glass: rgba(255, 255, 255, 0.16);
+    --glass-strong: rgba(255, 255, 255, 0.26);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #000; color: #fff;
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    user-select: none; -webkit-user-select: none;
+  }
+  button { font-family: inherit; }
+
+  #stage { position: fixed; inset: 0; }
+  #ck-canvas { width: 100%; height: 100%; display: block; object-fit: cover; background: #000; }
+
+  /* ---------- Barre haute ---------- */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 26px;
+    background: linear-gradient(rgba(0,0,0,.45), transparent);
+    pointer-events: none;
+  }
+  .topbar > * { pointer-events: auto; }
+  .glassbtn {
+    width: 44px; height: 44px; border-radius: 50%; border: none;
+    background: var(--glass); color: #fff; cursor: pointer;
+    display: grid; place-items: center;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    transition: background .15s ease, transform .1s ease;
+  }
+  .glassbtn:active { background: var(--glass-strong); transform: scale(.92); }
+  .glassbtn svg { width: 22px; height: 22px; }
+
+  /* ---------- Carrousel façon Snapchat ---------- */
+  .bottombar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 30px 0 calc(env(safe-area-inset-bottom, 0px) + 10px);
+    background: linear-gradient(transparent, rgba(0,0,0,.55));
+    touch-action: none;
+  }
+  .carousel-wrap {
+    position: relative; height: 100px;
+    touch-action: none;
+  }
+  /* La rangée est ancrée au centre de l'écran et déplacée par
+     transform: translateX en JS — aucun scroll natif, donc aucun
+     blocage possible par le navigateur mobile. */
+  .lensrow {
+    position: absolute; left: 50%; top: 0; height: 100%;
+    display: flex; align-items: center; gap: 16px;
+    will-change: transform;
+  }
+  .lens {
+    flex: 0 0 auto; width: 56px; height: 56px;
+    border: none; background: none; padding: 0; cursor: pointer;
+    position: relative;
+  }
+  .lens .thumb {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--glass) center/cover no-repeat;
+    border: 2px solid rgba(255,255,255,.4);
+    display: grid; place-items: center; font-size: 22px; color: #fff;
+    transition: transform .18s ease;
+    backdrop-filter: blur(8px);
+  }
+  .lens.centered .thumb { transform: scale(1.12); border-color: transparent; }
+  .lens .label {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: -26px; font-size: 11px; font-weight: 600; white-space: nowrap;
+    color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,.7);
+    opacity: 0; transition: opacity .18s ease; pointer-events: none;
+  }
+  .lens.centered .label { opacity: 1; }
+
+  /* Anneau de capture FIXE au centre, les filtres défilent dedans */
+  .shutter {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 82px; height: 82px; border-radius: 50%;
+    border: 5px solid rgba(255,255,255,.95);
+    background: transparent; padding: 0;
+    pointer-events: none; /* laisse passer le swipe sur les bords */
+    box-shadow: 0 4px 18px rgba(0,0,0,.35);
+    z-index: 2;
+  }
+  .shutter .tapzone {
+    position: absolute; inset: 8px; border-radius: 50%;
+    pointer-events: auto; cursor: pointer;
+  }
+  .shutter.flash { animation: flash .18s ease; }
+  @keyframes flash {
+    50% { box-shadow: 0 0 0 7px rgba(232,68,46,.55), 0 4px 18px rgba(0,0,0,.35); }
+  }
+
+  /* ---------- Écrans ---------- */
+  .screen {
+    position: fixed; inset: 0; z-index: 10; background: #000;
+    display: grid; place-items: center; padding: 28px; text-align: center;
+  }
+  .screen[hidden] { display: none; }
+  .screen .inner { max-width: 360px; }
+  .kicker {
+    color: var(--seddo); font-weight: 800; letter-spacing: .22em;
+    font-size: 11px; text-transform: uppercase; margin: 0 0 10px;
+  }
+  .screen h1 { font-size: 24px; font-weight: 700; margin: 0 0 10px; }
+  .screen p { font-size: 14px; line-height: 1.55; opacity: .85; margin: 0 0 22px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; border: none;
+    cursor: pointer; background: var(--seddo); color: #fff; font-weight: 700;
+    font-size: 15px; padding: 13px 28px; border-radius: 999px;
+  }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%; margin: 0 auto 16px;
+    border: 3px solid rgba(255,255,255,.15); border-top-color: var(--seddo);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Aperçu / partage ---------- */
+  #screen-preview { padding: 0; place-items: stretch; background: #000; }
+  .preview-wrap { position: relative; width: 100%; height: 100%; }
+  #preview-img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; background: #000;
+  }
+  .preview-top {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 30px;
+    background: linear-gradient(rgba(0,0,0,.5), transparent);
+  }
+  .hashtag {
+    background: var(--seddo); color: #fff; font-weight: 800;
+    font-size: 13px; letter-spacing: .03em;
+    padding: 8px 16px; border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(232,68,46,.45);
+  }
+  .preview-actions {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+    display: flex; align-items: flex-end; justify-content: center; gap: 26px;
+    padding: 40px 20px calc(env(safe-area-inset-bottom, 0px) + 22px);
+    background: linear-gradient(transparent, rgba(0,0,0,.65));
+  }
+  .action {
+    display: grid; justify-items: center; gap: 7px;
+    border: none; background: none; color: #fff; cursor: pointer; padding: 0;
+    font-size: 11px; font-weight: 600;
+  }
+  .action.busy { pointer-events: none; animation: busypulse 1s ease-in-out infinite; }
+  @keyframes busypulse { 50% { opacity: .45; } }
+  .action .circle {
+    width: 54px; height: 54px; border-radius: 50%;
+    background: var(--glass); display: grid; place-items: center;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.22);
+    transition: transform .1s ease, background .15s ease;
+  }
+  .action:active .circle { transform: scale(.9); background: var(--glass-strong); }
+  .action.primary .circle {
+    width: 64px; height: 64px; background: var(--seddo); border: none;
+    box-shadow: 0 6px 20px rgba(232,68,46,.5);
+  }
+  .action svg { width: 24px; height: 24px; }
+  .action.primary svg { width: 28px; height: 28px; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%);
+    background: rgba(20,20,20,.94); color: #fff; font-size: 13px;
+    padding: 11px 20px; border-radius: 999px; z-index: 20;
+    opacity: 0; transition: opacity .25s ease; pointer-events: none;
+    max-width: 86vw; text-align: center; backdrop-filter: blur(10px);
+  }
+  #toast.show { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 2s; }
+    .lens .thumb, .action .circle { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"><canvas id="ck-canvas"></canvas></div>
+
+<div class="topbar" id="ui-top" hidden>
+  <span aria-hidden="true"></span>
+  <button class="glassbtn" id="btn-flip" aria-label="Changer de caméra">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21.5 2.5v6h-6"/>
+      <path d="M2.5 21.5v-6h6"/>
+      <path d="M2.7 10.5a9.5 9.5 0 0 1 16.2-4.6l2.6 2.6"/>
+      <path d="M21.3 13.5a9.5 9.5 0 0 1-16.2 4.6l-2.6-2.6"/>
+    </svg>
+  </button>
+</div>
+
+<div class="bottombar" id="ui-bottom" hidden>
+  <div class="carousel-wrap">
+    <div class="lensrow" id="lensrow" role="listbox" aria-label="Filtres"></div>
+    <button class="shutter" id="btn-capture" aria-label="Prendre une photo">
+      <span class="tapzone"></span>
+    </button>
+  </div>
+</div>
+
+<section class="screen" id="screen-loading">
+  <div class="inner">
+    <div class="spinner" role="status" aria-label="Chargement"></div>
+    <p class="kicker">Seddo · #JOJ2026</p>
+    <p id="loading-msg">Ouverture de la caméra…</p>
+  </div>
+</section>
+
+<section class="screen" id="screen-error" hidden>
+  <div class="inner">
+    <p class="kicker">Un souci</p>
+    <h1 id="error-title">La caméra n'a pas pu s'ouvrir</h1>
+    <p id="error-msg"></p>
+    <button class="btn" id="btn-retry">Réessayer</button>
+  </div>
+</section>
+
+<section class="screen" id="screen-preview" hidden>
+  <div class="preview-wrap">
+    <img id="preview-img" alt="Votre photo souvenir">
+    <div class="preview-top">
+      <button class="glassbtn" id="btn-back" aria-label="Reprendre">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <span class="hashtag">#JOJ2026</span>
+    </div>
+    <div class="preview-actions">
+      <button class="action" id="btn-retake">
+        <span class="circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>
+          </svg>
+        </span>
+        Reprendre
+      </button>
+      <button class="action primary" id="btn-share">
+        <span class="circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 15V3"/><path d="m7 8 5-5 5 5"/>
+            <path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>
+          </svg>
+        </span>
+        Partager
+      </button>
+      <button class="action" id="btn-save">
+        <span class="circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/>
+          </svg>
+        </span>
+        Enregistrer
+      </button>
+    </div>
+  </div>
+</section>
+
+<div id="toast" role="status"></div>
+
+<script type="module">
+const CONFIG = {
+  API_TOKEN: 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzg0MTM4NzgxLCJzdWIiOiJkNGI1MmQyNC0xYjAzLTRjMWYtODQyZi0xYTg3MjFhY2I4NDN-U1RBR0lOR341MDYzNzk2Zi1hNDc2LTRjMzktYjc2OC1lZTg3YjZmZWNkYmUifQ.TcDFUjPM-pSGu7fZPiMAZi-LkwvgYgrKiqKzgQeQYwI',
+  LENS_GROUP_IDS: [
+    'b5e4b975-86c6-4cf1-a9b9-7102cbe577da', // groupe Seddo Filters
+  ],
+  LENS_ID: '3f10f390-d389-4cab-882e-eb309a170768', // secours
+  HASHTAG: '#JOJ2026',
+};
+
+if (new URLSearchParams(location.search).has('debug')) {
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+  s.onload = () => window.eruda && window.eruda.init();
+  document.body.appendChild(s);
+}
+
+import {
+  bootstrapCameraKit,
+  createMediaStreamSource,
+  Transform2D,
+} from './camera-kit.mjs';
+
+const $ = (id) => document.getElementById(id);
+const screens = ['screen-loading', 'screen-error', 'screen-preview'];
+function show(screenId) {
+  screens.forEach((s) => { $(s).hidden = s !== screenId; });
+  const cam = screenId === null;
+  $('ui-top').hidden = !cam;
+  $('ui-bottom').hidden = !cam;
+}
+function toast(msg, ms = 2600) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), ms);
+}
+function fail(title, msg) {
+  $('error-title').textContent = title;
+  $('error-msg').textContent = msg;
+  show('screen-error');
+}
+
+let cameraKit = null, session = null, lenses = [];
+let facing = 'user', mediaStream = null, lastPhotoBlob = null;
+let appliedLensId = null;
+
+/* ---------- Démarrage ---------- */
+async function start() {
+  show('screen-loading');
+  try {
+    $('loading-msg').textContent = 'Ouverture de la caméra…';
+    if (!cameraKit) cameraKit = await bootstrapCameraKit({ apiToken: CONFIG.API_TOKEN });
+    if (!session) {
+      session = await cameraKit.createSession({ liveRenderTarget: $('ck-canvas') });
+      session.events.addEventListener('error', (e) =>
+        console.error('CameraKit error:', e.detail));
+    }
+    await attachCamera(facing);
+
+    $('loading-msg').textContent = 'Chargement des filtres…';
+    if (!lenses.length) {
+      for (const gid of CONFIG.LENS_GROUP_IDS) {
+        try {
+          const res = await cameraKit.lensRepository.loadLensGroups([gid]);
+          lenses.push(...(res.lenses || []));
+        } catch (e) { console.error(`[Seddo] Groupe ${gid}:`, e); }
+      }
+      if (CONFIG.LENS_ID && !lenses.some((l) => l.id === CONFIG.LENS_ID)) {
+        try {
+          const lens = await cameraKit.lensRepository
+            .loadLens(CONFIG.LENS_ID, CONFIG.LENS_GROUP_IDS[0]);
+          if (lens) lenses.unshift(lens);
+        } catch (e) { console.error('[Seddo] Lens par ID:', e); }
+      }
+      buildLensRow();
+    }
+    await session.play();
+    show(null);
+    // Centre le premier filtre dans l'anneau (le sélectionne)
+    requestAnimationFrame(() => {
+      const first = document.querySelector('.lens[data-id]');
+      if (first) centerLens(first, 'auto');
+      else toast('Aucun filtre disponible pour le moment.', 5000);
+    });
+  } catch (err) {
+    console.error(err);
+    if (err && err.name === 'NotAllowedError') {
+      fail("Accès caméra refusé",
+        "Autorisez la caméra pour ce site dans les réglages du navigateur, puis réessayez.");
+    } else if (location.protocol === 'http:' && !location.hostname.includes('localhost')) {
+      fail('HTTPS requis', 'La caméra ne fonctionne que sur une page sécurisée (HTTPS).');
+    } else {
+      fail('Impossible de démarrer',
+        (err && err.message) || 'Vérifiez votre connexion internet, puis réessayez.');
+    }
+  }
+}
+
+/* ---------- Caméra ---------- */
+/* Budget de pixels du rendu : au-delà, les mobiles rament sans gain
+   visible (l'écran fait ~400pt de large). ~1,6 Mpx ≈ 900×1780. */
+const MAX_RENDER_PIXELS = 1600000;
+function renderDims() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = innerWidth * dpr, h = innerHeight * dpr;
+  const p = w * h;
+  if (p > MAX_RENDER_PIXELS) {
+    const k = Math.sqrt(MAX_RENDER_PIXELS / p);
+    w *= k; h *= k;
+  }
+  return [Math.round(w), Math.round(h)];
+}
+
+async function attachCamera(mode) {
+  if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+  mediaStream = await navigator.mediaDevices.getUserMedia({
+    // On demande le meilleur flux dispo (le rendu, lui, reste plafonné)
+    video: { facingMode: mode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false,
+  });
+  const source = createMediaStreamSource(mediaStream, {
+    transform: mode === 'user' ? Transform2D.MirrorX : undefined,
+    cameraType: mode,
+  });
+  await session.setSource(source);
+  const [rw, rh] = renderDims();
+  await source.setRenderSize(rw, rh);
+}
+
+$('btn-flip').addEventListener('click', async () => {
+  facing = facing === 'user' ? 'environment' : 'user';
+  try { await attachCamera(facing); await session.play(); }
+  catch {
+    toast('Caméra arrière indisponible sur cet appareil.');
+    facing = 'user';
+    await attachCamera(facing); await session.play();
+  }
+});
+
+/* ---------- Carrousel façon Snapchat (transform, zéro scroll natif) ---------- */
+const row = $('lensrow');
+const bar = $('ui-bottom');
+const PITCH = 72; // 56px de vignette + 16px d'écart
+const HALF = 28;  // demi-vignette
+
+console.log('[Seddo] carrousel v3 (transform)'); // repère de version déployée
+
+const items = () => [...row.querySelectorAll('.lens')];
+const xForIndex = (i) => -(i * PITCH + HALF);
+const clampIndex = (i) => Math.max(0, Math.min(items().length - 1, i));
+const indexForX = (x) => clampIndex(Math.round((-x - HALF) / PITCH));
+
+let xPos = 0;
+
+function setX(x, animate) {
+  // léger débordement autorisé aux extrémités, le snap ramènera
+  const n = items().length;
+  if (n) {
+    const min = xForIndex(n - 1) - 30, max = xForIndex(0) + 30;
+    x = Math.max(min, Math.min(max, x));
+  }
+  xPos = x;
+  row.style.transition = animate ? 'transform .25s cubic-bezier(.22,.61,.36,1)' : 'none';
+  row.style.transform = `translateX(${x}px)`;
+}
+
+function highlightIndex(i) {
+  items().forEach((el, k) => el.classList.toggle('centered', k === i));
+}
+
+/* Applique le filtre de l'index donné */
+async function applyIndex(i) {
+  const el = items()[i];
+  if (!el) return;
+  if (el.dataset.none) {
+    if (appliedLensId !== null) {
+      appliedLensId = null;
+      try { await session.removeLens(); } catch {}
+    }
+    return;
+  }
+  const lens = lenses.find((l) => l.id === el.dataset.id);
+  if (!lens || lens.id === appliedLensId) return;
+  appliedLensId = lens.id;
+  try { await session.applyLens(lens); }
+  catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
+}
+
+/* Centre l'index dans l'anneau et applique son filtre */
+function snapTo(i, animate = true) {
+  if (!items().length) return;
+  i = clampIndex(i);
+  setX(xForIndex(i), animate);
+  highlightIndex(i);
+  applyIndex(i);
+}
+
+function centerLens(el, behavior = 'smooth') {
+  snapTo(items().indexOf(el), behavior !== 'auto');
+}
+
+function buildLensRow() {
+  row.innerHTML = '';
+  // Emplacement "Sans filtre" en tête, comme la caméra nue de Snapchat
+  const none = document.createElement('button');
+  none.className = 'lens';
+  none.dataset.none = '1';
+  none.innerHTML =
+    '<span class="label">Sans filtre</span>' +
+    '<span class="thumb"><svg viewBox="0 0 24 24" width="22" height="22" ' +
+    'fill="none" stroke="white" stroke-width="2" stroke-linecap="round">' +
+    '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
+    '<circle cx="12" cy="13" r="4"/></svg></span>';
+  none.addEventListener('click', () => centerLens(none)); // clavier
+  row.appendChild(none);
+
+  lenses.forEach((lens) => {
+    const b = document.createElement('button');
+    b.className = 'lens';
+    b.dataset.id = lens.id;
+    const icon = lens.iconUrl ? `style="background-image:url('${lens.iconUrl}')"` : '';
+    b.innerHTML =
+      `<span class="label">${lens.name || 'Filtre'}</span>` +
+      `<span class="thumb" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
+    b.addEventListener('click', () => centerLens(b)); // clavier
+    row.appendChild(b);
+  });
+  snapTo(0, false);
+}
+
+/* ---------- Gestes : swipe tactile + souris sur toute la barre ---------- */
+let drag = null;
+let lastTouchEnd = 0;
+
+function gestureStart(x, t, target) {
+  drag = {
+    startX: x, startXPos: xPos, startIndex: indexForX(xPos), target,
+    moved: false, lastX: x, lastT: t, v: 0,
+  };
+}
+
+function gestureMove(x, t) {
+  if (!drag) return;
+  const dx = x - drag.startX;
+  if (!drag.moved && Math.abs(dx) > 6) drag.moved = true;
+  if (drag.moved) {
+    setX(drag.startXPos + dx, false);
+    highlightIndex(indexForX(xPos));
+    const dt = t - drag.lastT;
+    if (dt > 0) drag.v = (x - drag.lastX) / dt; // px/ms
+    drag.lastX = x; drag.lastT = t;
+  }
+}
+
+function gestureEnd() {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.moved) {
+    // Geste vif : le voisin dans le sens du swipe ; sinon le plus proche
+    const i = Math.abs(d.v) > 0.35
+      ? d.startIndex + (d.v < 0 ? 1 : -1)
+      : indexForX(xPos);
+    snapTo(i);
+  } else {
+    // Tap simple
+    const lensEl = d.target.closest && d.target.closest('.lens');
+    if (lensEl) centerLens(lensEl);
+    else if (d.target.closest && d.target.closest('.shutter')) capturePhoto();
+  }
+}
+
+function gestureCancel() {
+  if (!drag) return;
+  drag = null;
+  snapTo(indexForX(xPos));
+}
+
+/* --- Tactile (mobile) --- */
+bar.addEventListener('touchstart', (e) => {
+  if (e.touches.length > 1) return;
+  const t = e.changedTouches[0];
+  gestureStart(t.clientX, e.timeStamp, e.target);
+}, { passive: true });
+
+bar.addEventListener('touchmove', (e) => {
+  if (!drag) return;
+  e.preventDefault(); // bloque le scroll/geste natif du navigateur
+  gestureMove(e.changedTouches[0].clientX, e.timeStamp);
+}, { passive: false });
+
+bar.addEventListener('touchend', (e) => {
+  lastTouchEnd = Date.now();
+  if (drag) e.preventDefault(); // évite le "clic fantôme" émulé
+  gestureEnd();
+}, { passive: false });
+
+bar.addEventListener('touchcancel', gestureCancel);
+
+/* --- Souris (ordinateur) --- */
+bar.addEventListener('mousedown', (e) => {
+  if (Date.now() - lastTouchEnd < 800) return; // ignore l'émulation post-touch
+  e.preventDefault();
+  gestureStart(e.clientX, e.timeStamp, e.target);
+  const move = (ev) => gestureMove(ev.clientX, ev.timeStamp);
+  const up = () => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    gestureEnd();
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+});
+
+/* --- Molette / trackpad (ordinateur) --- */
+let wheelTimer;
+bar.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  setX(xPos - delta, false);
+  highlightIndex(indexForX(xPos));
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => snapTo(indexForX(xPos)), 120);
+}, { passive: false });
+
+/* ---------- Capture ---------- */
+/* 1600px de grand côté : excellent pour les réseaux sociaux, et 3 à 5×
+   plus léger à convertir/envoyer qu'une capture pleine résolution. */
+const MAX_CAPTURE_EDGE = 1600;
+function grabFrame() {
+  return new Promise((resolve, reject) => {
+    const src = $('ck-canvas');
+    let tries = 0;
+    const attempt = () => {
+      requestAnimationFrame(() => {
+        const scale = Math.min(1, MAX_CAPTURE_EDGE / Math.max(src.width, src.height));
+        const out = document.createElement('canvas');
+        out.width = Math.max(1, Math.round(src.width * scale));
+        out.height = Math.max(1, Math.round(src.height * scale));
+        const ctx = out.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(src, 0, 0, out.width, out.height);
+        const px = ctx.getImageData(out.width >> 1, out.height >> 1, 1, 1).data;
+        if (px[3] !== 0 || tries >= 5) {
+          out.toBlob((b) => b ? resolve(b)
+            : reject(new Error('capture vide')), 'image/jpeg', 0.9);
+        } else { tries += 1; attempt(); }
+      });
+    };
+    attempt();
+  });
+}
+
+let lastCaptureAt = 0;
+let previewUrl = null;     // URL blob de l'aperçu courant (révoquée à chaque fois)
+let photoB64Cache = null;  // base64 mémorisé : converti une seule fois par photo
+
+async function capturePhoto() {
+  const now = Date.now();
+  if (now - lastCaptureAt < 400) return; // anti double-déclenchement
+  lastCaptureAt = now;
+  $('btn-capture').classList.add('flash');
+  setTimeout(() => $('btn-capture').classList.remove('flash'), 220);
+  try {
+    const blob = await grabFrame();
+    lastPhotoBlob = blob;
+    photoB64Cache = null;                       // nouvelle photo → cache invalidé
+    if (previewUrl) URL.revokeObjectURL(previewUrl); // libère l'ancienne image
+    previewUrl = URL.createObjectURL(blob);
+    const img = $('preview-img');
+    img.src = previewUrl;
+    try { await img.decode(); } catch {}        // garantit la NOUVELLE image à l'écran
+    show('screen-preview');
+    try { session.pause(); } catch {}           // caméra en pause = batterie/CPU épargnés
+  } catch {
+    toast("La photo n'a pas pu être capturée, réessayez.");
+  }
+}
+// Clavier / lecteurs d'écran (le tap tactile passe par endDrag)
+$('btn-capture').addEventListener('click', capturePhoto);
+
+const backToCamera = () => {
+  show(null);
+  try { session.play(); } catch {}
+  // On nettoie l'aperçu pour ne jamais revoir l'ancienne photo
+  const img = $('preview-img');
+  img.removeAttribute('src');
+  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+};
+$('btn-back').addEventListener('click', backToCamera);
+$('btn-retake').addEventListener('click', backToCamera);
+
+/* Onglet en arrière-plan → caméra en pause (batterie) */
+document.addEventListener('visibilitychange', () => {
+  if (!session) return;
+  if (document.hidden) { try { session.pause(); } catch {} }
+  else if ($('screen-preview').hidden) { try { session.play(); } catch {} }
+});
+
+/* Pont natif universel : la page détecte automatiquement le canal
+   injecté par l'app hôte, quelle que soit la technologie :
+   - Flutter (webview_flutter, JavaScriptChannel) : window.SeddoBridge
+   - Android natif (addJavascriptInterface)       : window.SeddoBridge
+   - iOS natif (WKWebView messageHandlers)        : window.webkit.messageHandlers.SeddoBridge
+   - React Native (react-native-webview)          : window.ReactNativeWebView
+   On lui envoie la photo en base64, l'app s'occupe de la galerie /
+   feuille de partage native. */
+function bridgeSend(payload) {
+  const json = JSON.stringify(payload);
+  if (window.SeddoBridge && window.SeddoBridge.postMessage) {
+    window.SeddoBridge.postMessage(json); return true;            // Flutter / Android
+  }
+  const wk = window.webkit && window.webkit.messageHandlers;
+  if (wk && wk.SeddoBridge) {
+    wk.SeddoBridge.postMessage(json); return true;                // iOS natif
+  }
+  if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+    window.ReactNativeWebView.postMessage(json); return true;     // React Native
+  }
+  return false;
+}
+const hasBridge = () =>
+  !!((window.SeddoBridge && window.SeddoBridge.postMessage) ||
+     (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.SeddoBridge) ||
+     (window.ReactNativeWebView && window.ReactNativeWebView.postMessage));
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = () => reject(new Error('read failed'));
+    r.readAsDataURL(blob);
+  });
+}
+
+async function sendToApp(action) {
+  if (photoB64Cache === null) {
+    photoB64Cache = await blobToBase64(lastPhotoBlob); // converti 1 seule fois
+  }
+  return bridgeSend({
+    action, // 'save' ou 'share'
+    filename: `seddo-joj2026-${Date.now()}.jpg`,
+    text: `Mon souvenir du Sénégal avec Seddo 🇸🇳 ${CONFIG.HASHTAG}`,
+    data: photoB64Cache,
+  });
+}
+
+/* Verrou : une seule opération save/share à la fois, avec retour visuel */
+let sending = false;
+async function withBusy(fn) {
+  if (sending) return;
+  sending = true;
+  const btns = [$('btn-save'), $('btn-share')];
+  btns.forEach((b) => { b.disabled = true; b.classList.add('busy'); });
+  try { await fn(); }
+  finally {
+    sending = false;
+    btns.forEach((b) => { b.disabled = false; b.classList.remove('busy'); });
+  }
+}
+
+$('btn-save').addEventListener('click', () => {
+  if (!lastPhotoBlob) return;
+  withBusy(async () => {
+    if (hasBridge()) {             // Dans une app native → galerie
+      try { await sendToApp('save'); } catch { toast('Enregistrement impossible.'); }
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(lastPhotoBlob);
+    a.download = `seddo-joj2026-${Date.now()}.jpg`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast('Photo enregistrée ✓');
+  });
+});
+
+$('btn-share').addEventListener('click', () => {
+  if (!lastPhotoBlob) return;
+  withBusy(async () => {
+    if (hasBridge()) {             // Dans une app native → partage natif
+      try { await sendToApp('share'); } catch { toast('Partage impossible.'); }
+      return;
+    }
+    const file = new File([lastPhotoBlob], 'seddo-joj2026.jpg', { type: 'image/jpeg' });
+    const shareText = `Mon souvenir du Sénégal avec Seddo 🇸🇳 ${CONFIG.HASHTAG}`;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Seddo', text: shareText });
+      } catch {}
+    } else {
+      try { await navigator.clipboard.writeText(shareText); } catch {}
+      toast('Partage indisponible ici — texte copié, utilisez Enregistrer.');
+    }
+  });
+});
+
+/* Appelé par l'app native pour confirmer à l'utilisateur */
+window.seddoNotify = (msg) => toast(msg);
+
+$('btn-retry').addEventListener('click', start);
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(async () => {
+    if (session && session.source) {
+      const [rw, rh] = renderDims();
+      try { await session.source.setRenderSize(rw, rh); }
+      catch {}
+    }
+  }, 250);
+});
+
+window.addEventListener('load', start);
+</script>
+</body>
+</html>

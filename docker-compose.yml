@@ -1,0 +1,7 @@
+services:
+  seddo:
+    build: .
+    restart: unless-stopped
+    # Dokploy/Traefik route vers le port 80 du conteneur — pas de ports publiés ici.
+    expose:
+      - "80"

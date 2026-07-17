@@ -195,6 +195,16 @@
     object-fit: contain; background: #000;
   }
   #preview-img[hidden], #preview-video[hidden] { display: none; }
+  .mute-hint {
+    position: absolute; left: 50%; z-index: 2;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 150px);
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.55); color: #fff; font-size: 12.5px; font-weight: 600;
+    padding: 8px 15px; border-radius: 999px; white-space: nowrap;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    pointer-events: none;
+  }
+  .mute-hint[hidden] { display: none; }
   .preview-top {
     position: absolute; top: 0; left: 0; right: 0; z-index: 2;
     display: flex; align-items: center; justify-content: space-between;
@@ -308,6 +318,7 @@
   <div class="preview-wrap">
     <img id="preview-img" alt="Votre photo souvenir">
     <video id="preview-video" playsinline loop hidden></video>
+    <span class="mute-hint" id="mute-hint" hidden>🔇 Toucher pour le son</span>
     <div class="preview-top">
       <button class="glassbtn" id="btn-back" aria-label="Reprendre">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -742,6 +753,7 @@ async function capturePhoto() {
     previewUrl = URL.createObjectURL(blob);
     const v = $('preview-video');
     v.pause(); v.removeAttribute('src'); v.hidden = true;
+    $('mute-hint').hidden = true;
     const img = $('preview-img');
     img.hidden = false;
     img.src = previewUrl;
@@ -784,12 +796,19 @@ shutterBtn.addEventListener('keydown', (e) => {
   if ((e.key === 'Enter' || e.key === ' ') && !recording) { e.preventDefault(); capturePhoto(); }
 });
 
-/* ---------- Enregistrement vidéo (canvas → MediaRecorder) ---------- */
+/* ---------- Enregistrement vidéo (canvas WebGL → canvas 2D miroir → MediaRecorder) ----------
+   On NE capture PAS directement le canvas WebGL de Camera Kit : sur beaucoup
+   de mobiles, captureStream() d'un canvas WebGL renvoie des images NOIRES
+   (le tampon de dessin est vidé après composition). On recopie donc chaque
+   image dans un canvas 2D — exactement comme la photo, qui elle fonctionne —
+   et on enregistre CE canvas-là. */
 const MAX_VIDEO_MS = 60000;               // 1 minute maximum
 const RING_C = 289.03;                    // circonférence de l'anneau (r=46)
+const REC_MAX_EDGE = 1280;                // grand côté vidéo : léger + fluide
 let recording = false;
 let mediaRecorder = null, recordChunks = [], recordAudio = null;
 let recordStartAt = 0, recordRaf = 0, recordTimeout = 0;
+let recCanvas = null, recCtx = null, recDrawRaf = 0;
 
 function pickVideoMime() {
   const candidates = [
@@ -806,37 +825,61 @@ function pickVideoMime() {
   return '';
 }
 
+/* Boucle de recopie WebGL → 2D pendant l'enregistrement */
+function startMirror() {
+  const src = $('ck-canvas');
+  const scale = Math.min(1, REC_MAX_EDGE / Math.max(src.width || 1, src.height || 1));
+  recCanvas = document.createElement('canvas');
+  recCanvas.width = Math.max(2, Math.round((src.width || 720) * scale));
+  recCanvas.height = Math.max(2, Math.round((src.height || 1280) * scale));
+  recCtx = recCanvas.getContext('2d');
+  const draw = () => {
+    if (!recCanvas) return;
+    try { recCtx.drawImage(src, 0, 0, recCanvas.width, recCanvas.height); } catch {}
+    recDrawRaf = requestAnimationFrame(draw);
+  };
+  draw();
+  return recCanvas;
+}
+function stopMirror() {
+  cancelAnimationFrame(recDrawRaf);
+  recCanvas = null; recCtx = null;
+}
+
 async function startRecording() {
   if (recording || !session) return;
-  const canvas = $('ck-canvas');
-  if (!canvas.captureStream || !window.MediaRecorder) {
-    toast('La vidéo n\'est pas supportée par ce navigateur.');
-    capturePhoto();               // repli : on prend au moins une photo
+  const canStream = !!HTMLCanvasElement.prototype.captureStream;
+  if (!window.MediaRecorder || !canStream) {
+    toast('Vidéo non supportée ici.');
+    capturePhoto();                 // repli : au moins une photo
     return;
   }
+
+  const mirror = startMirror();
   let stream;
-  try { stream = canvas.captureStream(30); }
-  catch { toast("Impossible de démarrer la vidéo."); return; }
+  try { stream = mirror.captureStream(30); }
+  catch { stopMirror(); toast("Impossible de démarrer la vidéo."); return; }
+
   // Piste audio (micro) — au mieux ; la vidéo reste muette si refusé.
   try {
     recordAudio = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordAudio.getAudioTracks().forEach((t) => stream.addTrack(t));
   } catch { recordAudio = null; }
-  if (!pressActive && !recording) { stopAudioTrack(); return; } // relâché trop tôt
+  if (!pressActive && !recording) { stopAudioTrack(); stopMirror(); return; } // relâché trop tôt
 
   const mime = pickVideoMime();
-  const opts = { videoBitsPerSecond: 6000000 };
+  const opts = { videoBitsPerSecond: 3500000, audioBitsPerSecond: 128000 };
   if (mime) opts.mimeType = mime;
   recordChunks = [];
   try { mediaRecorder = new MediaRecorder(stream, opts); }
   catch {
     try { mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
-    catch { stopAudioTrack(); toast("Enregistrement vidéo indisponible."); return; }
+    catch { stopAudioTrack(); stopMirror(); toast("Enregistrement vidéo indisponible."); return; }
   }
   mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recordChunks.push(e.data); };
   mediaRecorder.onstop = finishRecording;
   try { mediaRecorder.start(); }
-  catch { stopAudioTrack(); toast("Enregistrement vidéo indisponible."); return; }
+  catch { stopAudioTrack(); stopMirror(); toast("Enregistrement vidéo indisponible."); return; }
 
   recording = true;
   recordStartAt = Date.now();
@@ -871,6 +914,7 @@ function stopAudioTrack() {
 
 function finishRecording() {
   stopAudioTrack();
+  stopMirror();
   shutterBtn.classList.remove('recording');
   $('btn-flip').disabled = false;
   $('rec-timer').hidden = true;
@@ -887,10 +931,35 @@ function finishRecording() {
   const img = $('preview-img');
   img.hidden = true; img.removeAttribute('src');
   const v = $('preview-video');
-  v.hidden = false; v.muted = false; v.src = previewUrl;
-  v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+  // Lecture MUETTE garantie (autoplay autorisé) → on voit la vidéo tout de
+  // suite ; un tap sur la vidéo réactive le son.
+  v.hidden = false; v.muted = true; v.playsInline = true; v.src = previewUrl;
+  v.load();
+  const tryPlay = () => v.play().catch(() => {});
+  v.oncanplay = tryPlay;
+  tryPlay();
+  updateMuteHint();
   show('screen-preview');
   try { session.pause(); } catch {}
+}
+
+/* Tap sur la vidéo = couper / activer le son */
+(() => {
+  const v = $('preview-video');
+  v.addEventListener('click', () => {
+    v.muted = !v.muted;
+    if (!v.muted) v.play().catch(() => {});
+    updateMuteHint();
+  });
+})();
+function updateMuteHint() {
+  const v = $('preview-video');
+  if (lastKind === 'video' && !$('screen-preview').hidden) {
+    $('mute-hint').hidden = false;
+    $('mute-hint').textContent = v.muted ? '🔇 Toucher pour le son' : '🔊 Son activé';
+  } else {
+    $('mute-hint').hidden = true;
+  }
 }
 
 /* ---------- Indice « maintiens pour filmer » ---------- */
@@ -911,6 +980,7 @@ const backToCamera = () => {
   img.removeAttribute('src'); img.hidden = false;
   const v = $('preview-video');
   v.pause(); v.removeAttribute('src'); v.hidden = true;
+  $('mute-hint').hidden = true;
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
 };
 $('btn-back').addEventListener('click', backToCamera);

@@ -310,8 +310,13 @@ const CONFIG = {
   ],
   LENS_ID: '3f10f390-d389-4cab-882e-eb309a170768', // secours
   HASHTAG: '#JOJ2026',
-  // Appui long sur l'obturateur → ouverture du même filtre dans Snapchat
-  SNAP_LENS_URL: 'https://www.snapchat.com/unlock/?type=SNAPCODE&uuid=1f5c9edd8c5e4a3a8330db9ba19f0701&metadata=01',
+  // Appui long sur l'obturateur → ouverture du MÊME filtre (celui sélectionné)
+  // dans Snapchat. L'URL est construite dynamiquement à partir de l'ID du lens :
+  //   https://www.snapchat.com/unlock/?type=SNAPCODE&uuid=<ID_SANS_TIRETS>&metadata=01
+  SNAP_UNLOCK_TEMPLATE: 'https://www.snapchat.com/unlock/?type=SNAPCODE&uuid={uuid}&metadata=01',
+  // Repli « app non installée » (l'app hôte peut s'en servir)
+  SNAP_APPSTORE_URL: 'https://apps.apple.com/app/snapchat/id447188370',
+  SNAP_PLAYSTORE_URL: 'https://play.google.com/store/apps/details?id=com.snapchat.android',
 };
 
 if (new URLSearchParams(location.search).has('debug')) {
@@ -738,14 +743,45 @@ shutterBtn.addEventListener('keydown', (e) => {
   else if (e.key === 's' || e.key === 'S') { e.preventDefault(); openSnapLens(); }
 });
 
-/* Ouvre le même filtre dans l'app Snapchat (ou la page Snap si l'app est absente). */
+/* ID du lens actuellement sélectionné (centré dans l'anneau). */
+function currentLensId() {
+  const el = document.querySelector('.lens.centered');
+  if (el && el.dataset.id) return el.dataset.id;   // filtre centré
+  if (appliedLensId) return appliedLensId;          // secours : filtre appliqué
+  return (lenses[0] && lenses[0].id) || null;       // dernier recours : 1er filtre
+}
+
+/* Construit l'URL Snapchat d'unlock pour un lens donné (uuid = id sans tirets). */
+function snapUnlockUrl(lensId) {
+  const uuid = String(lensId).replace(/-/g, '');
+  return CONFIG.SNAP_UNLOCK_TEMPLATE.replace('{uuid}', uuid);
+}
+
+/* Ouvre LE FILTRE SÉLECTIONNÉ dans l'app Snapchat (ou l'App Store / Play Store si absente).
+   ⚠️ En WebView native, window.open est bloqué et les liens https ne partent
+   pas vers l'app externe : c'est l'app HÔTE qui doit ouvrir l'URL. On la lui
+   transmet donc via le pont (action 'openUrl'). En navigateur classique, on
+   ouvre un nouvel onglet, avec repli en navigation directe. */
 function openSnapLens() {
-  const url = CONFIG.SNAP_LENS_URL;
-  if (!url) return;
-  toast('Ouverture du filtre sur Snapchat…', 1800);
+  const lensId = currentLensId();
+  if (!lensId) { toast('Choisis d\'abord un filtre.'); return; }
+  const url = snapUnlockUrl(lensId);
+  toast('Ouverture de Snapchat…', 1800);
+  // 1) WebView native → l'app hôte ouvre le lien EN EXTERNE.
+  if (hasBridge()) {
+    const sent = bridgeSend({
+      action: 'openUrl',
+      url,
+      lensId,
+      appStoreUrl: CONFIG.SNAP_APPSTORE_URL,
+      playStoreUrl: CONFIG.SNAP_PLAYSTORE_URL,
+    });
+    if (sent) return;
+  }
+  // 2) Navigateur classique.
   let win = null;
   try { win = window.open(url, '_blank'); } catch {}
-  if (!win) { try { location.href = url; } catch {} } // repli si le popup est bloqué
+  if (!win) { try { location.href = url; } catch {} }
 }
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */

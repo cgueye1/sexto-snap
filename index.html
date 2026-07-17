@@ -93,15 +93,74 @@
     pointer-events: none; /* laisse passer le swipe sur les bords */
     box-shadow: 0 4px 18px rgba(0,0,0,.35);
     z-index: 2;
+    transition: transform .2s cubic-bezier(.22,1.2,.4,1), border-color .2s ease;
   }
   .shutter .tapzone {
     position: absolute; inset: 8px; border-radius: 50%;
-    pointer-events: auto; cursor: pointer;
+    pointer-events: auto; cursor: pointer; touch-action: none;
+    z-index: 3;
   }
   .shutter.flash { animation: flash .18s ease; }
   @keyframes flash {
     50% { box-shadow: 0 0 0 7px rgba(232,68,46,.55), 0 4px 18px rgba(0,0,0,.35); }
   }
+
+  /* Anneau de progression de l'enregistrement vidéo */
+  .shutter .ring-progress {
+    position: absolute; inset: -9px; width: calc(100% + 18px); height: calc(100% + 18px);
+    transform: rotate(-90deg); pointer-events: none;
+    opacity: 0; transition: opacity .2s ease;
+  }
+  .shutter .ring-progress circle { fill: none; stroke-linecap: round; }
+  .shutter .ring-track { stroke: rgba(255,255,255,.20); stroke-width: 5; }
+  .shutter .ring-fill {
+    stroke: var(--seddo); stroke-width: 6;
+    stroke-dasharray: 289.03; stroke-dashoffset: 289.03;
+    filter: drop-shadow(0 0 4px rgba(232,68,46,.6));
+  }
+  /* Pastille rouge centrale, visible pendant l'enregistrement */
+  .shutter .rec-dot {
+    position: absolute; top: 50%; left: 50%;
+    width: 26px; height: 26px; border-radius: 8px; background: var(--seddo);
+    transform: translate(-50%,-50%) scale(0);
+    transition: transform .22s cubic-bezier(.22,1.2,.4,1); pointer-events: none;
+  }
+  .shutter.recording {
+    border-color: rgba(255,255,255,.4);
+    transform: translate(-50%,-50%) scale(1.08);
+  }
+  .shutter.recording .ring-progress { opacity: 1; }
+  .shutter.recording .rec-dot { transform: translate(-50%,-50%) scale(1); }
+
+  /* Indice sous l'obturateur */
+  .shutter-hint {
+    position: absolute; left: 50%; top: calc(50% + 50px);
+    transform: translateX(-50%);
+    font-size: 11.5px; font-weight: 600; color: rgba(255,255,255,.9);
+    text-shadow: 0 1px 6px rgba(0,0,0,.8); white-space: nowrap;
+    pointer-events: none; opacity: 0; transition: opacity .35s ease;
+  }
+  .shutter-hint.show { opacity: 1; }
+
+  .glassbtn:disabled { opacity: .35; pointer-events: none; }
+
+  /* Minuteur d'enregistrement (haut de l'écran) */
+  .rec-timer {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 16px); left: 50%;
+    transform: translateX(-50%); z-index: 6;
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(0,0,0,.55); color: #fff;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    padding: 7px 15px 7px 12px; border-radius: 999px;
+    font-size: 14px; font-weight: 700; letter-spacing: .02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .rec-timer[hidden] { display: none; }
+  .rec-timer .live {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--seddo);
+    animation: recpulse 1s ease-in-out infinite;
+  }
+  @keyframes recpulse { 50% { opacity: .2; transform: scale(.8); } }
 
   /* ---------- Écrans ---------- */
   .screen {
@@ -131,10 +190,11 @@
   /* ---------- Aperçu / partage ---------- */
   #screen-preview { padding: 0; place-items: stretch; background: #000; }
   .preview-wrap { position: relative; width: 100%; height: 100%; }
-  #preview-img {
+  #preview-img, #preview-video {
     position: absolute; inset: 0; width: 100%; height: 100%;
     object-fit: contain; background: #000;
   }
+  #preview-img[hidden], #preview-video[hidden] { display: none; }
   .preview-top {
     position: absolute; top: 0; left: 0; right: 0; z-index: 2;
     display: flex; align-items: center; justify-content: space-between;
@@ -210,16 +270,27 @@
 <div class="bottombar" id="ui-bottom" hidden>
   <div class="carousel-wrap">
     <div class="lensrow" id="lensrow" role="listbox" aria-label="Filtres"></div>
-    <button class="shutter" id="btn-capture" aria-label="Prendre une photo">
+    <button class="shutter" id="btn-capture"
+            aria-label="Appui court : photo — Appui long : vidéo (1 min max)">
+      <svg class="ring-progress" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="ring-track" cx="50" cy="50" r="46"/>
+        <circle class="ring-fill" id="ring-fill" cx="50" cy="50" r="46"/>
+      </svg>
       <span class="tapzone"></span>
+      <span class="rec-dot" aria-hidden="true"></span>
     </button>
+    <span class="shutter-hint" id="shutter-hint">Maintiens pour filmer</span>
   </div>
+</div>
+
+<div class="rec-timer" id="rec-timer" hidden>
+  <span class="live"></span><span id="rec-time">0:00</span>
 </div>
 
 <section class="screen" id="screen-loading">
   <div class="inner">
     <div class="spinner" role="status" aria-label="Chargement"></div>
-    <p class="kicker">Seddo · #JOJ2026</p>
+    <p class="kicker">Seddo</p>
     <p id="loading-msg">Ouverture de la caméra…</p>
   </div>
 </section>
@@ -236,6 +307,7 @@
 <section class="screen" id="screen-preview" hidden>
   <div class="preview-wrap">
     <img id="preview-img" alt="Votre photo souvenir">
+    <video id="preview-video" playsinline loop hidden></video>
     <div class="preview-top">
       <button class="glassbtn" id="btn-back" aria-label="Reprendre">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -324,7 +396,18 @@ function fail(title, msg) {
 
 let cameraKit = null, session = null, lenses = [];
 let facing = 'user', mediaStream = null, lastPhotoBlob = null;
+let lastVideoBlob = null, lastKind = 'photo';   // 'photo' | 'video'
 let appliedLensId = null;
+
+function currentBlob() { return lastKind === 'video' ? lastVideoBlob : lastPhotoBlob; }
+function currentMime() {
+  if (lastKind !== 'video') return 'image/jpeg';
+  return (lastVideoBlob && lastVideoBlob.type) || 'video/mp4';
+}
+function currentExt() {
+  if (lastKind !== 'video') return 'jpg';
+  return currentMime().includes('webm') ? 'webm' : 'mp4';
+}
 
 /* ---------- Démarrage ---------- */
 async function start() {
@@ -364,6 +447,7 @@ async function start() {
       if (first) centerLens(first, 'auto');
       else toast('Aucun filtre disponible pour le moment.', 5000);
     });
+    showHintOnce();
   } catch (err) {
     console.error(err);
     if (err && err.name === 'NotAllowedError') {
@@ -383,7 +467,11 @@ async function start() {
    visible (l'écran fait ~400pt de large). ~1,6 Mpx ≈ 900×1780. */
 const MAX_RENDER_PIXELS = 1600000;
 function renderDims() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // Sur les mobiles modestes (≤4 cœurs) on plafonne plus bas le DPR :
+  // rendu plus fluide, économie de batterie, différence invisible à l'œil.
+  const cores = navigator.hardwareConcurrency || 4;
+  const cap = cores <= 4 ? 1.5 : 2;
+  const dpr = Math.min(window.devicePixelRatio || 1, cap);
   let w = innerWidth * dpr, h = innerHeight * dpr;
   const p = w * h;
   if (p > MAX_RENDER_PIXELS) {
@@ -410,6 +498,7 @@ async function attachCamera(mode) {
 }
 
 $('btn-flip').addEventListener('click', async () => {
+  if (recording) return; // pas de changement de caméra en plein tournage
   facing = facing === 'user' ? 'environment' : 'user';
   try { await attachCamera(facing); await session.play(); }
   catch {
@@ -544,10 +633,9 @@ function gestureEnd() {
       : indexForX(xPos);
     snapTo(i);
   } else {
-    // Tap simple
+    // Tap simple (l'obturateur gère ses propres appuis, cf. plus bas)
     const lensEl = d.target.closest && d.target.closest('.lens');
     if (lensEl) centerLens(lensEl);
-    else if (d.target.closest && d.target.closest('.shutter')) capturePhoto();
   }
 }
 
@@ -560,6 +648,7 @@ function gestureCancel() {
 /* --- Tactile (mobile) --- */
 bar.addEventListener('touchstart', (e) => {
   if (e.touches.length > 1) return;
+  if (e.target.closest('.shutter')) return; // géré par l'obturateur (appui court/long)
   const t = e.changedTouches[0];
   gestureStart(t.clientX, e.timeStamp, e.target);
 }, { passive: true });
@@ -581,6 +670,7 @@ bar.addEventListener('touchcancel', gestureCancel);
 /* --- Souris (ordinateur) --- */
 bar.addEventListener('mousedown', (e) => {
   if (Date.now() - lastTouchEnd < 800) return; // ignore l'émulation post-touch
+  if (e.target.closest('.shutter')) return;    // géré par l'obturateur
   e.preventDefault();
   gestureStart(e.clientX, e.timeStamp, e.target);
   const move = (ev) => gestureMove(ev.clientX, ev.timeStamp);
@@ -635,7 +725,7 @@ function grabFrame() {
 
 let lastCaptureAt = 0;
 let previewUrl = null;     // URL blob de l'aperçu courant (révoquée à chaque fois)
-let photoB64Cache = null;  // base64 mémorisé : converti une seule fois par photo
+let mediaB64Cache = null;  // base64 mémorisé : converti une seule fois par média
 
 async function capturePhoto() {
   const now = Date.now();
@@ -646,10 +736,14 @@ async function capturePhoto() {
   try {
     const blob = await grabFrame();
     lastPhotoBlob = blob;
-    photoB64Cache = null;                       // nouvelle photo → cache invalidé
+    lastKind = 'photo';
+    mediaB64Cache = null;                       // nouveau média → cache invalidé
     if (previewUrl) URL.revokeObjectURL(previewUrl); // libère l'ancienne image
     previewUrl = URL.createObjectURL(blob);
+    const v = $('preview-video');
+    v.pause(); v.removeAttribute('src'); v.hidden = true;
     const img = $('preview-img');
+    img.hidden = false;
     img.src = previewUrl;
     try { await img.decode(); } catch {}        // garantit la NOUVELLE image à l'écran
     show('screen-preview');
@@ -658,15 +752,165 @@ async function capturePhoto() {
     toast("La photo n'a pas pu être capturée, réessayez.");
   }
 }
-// Clavier / lecteurs d'écran (le tap tactile passe par endDrag)
-$('btn-capture').addEventListener('click', capturePhoto);
+
+/* ---------- Obturateur : appui court = photo, appui long = vidéo ----------
+   Un même bouton, façon Snapchat. Tap → photo. Maintien → enregistrement
+   vidéo (1 min max), relâchement → arrêt. */
+const shutterBtn = $('btn-capture');
+const tapzone = shutterBtn.querySelector('.tapzone');
+const LONG_PRESS_MS = 260;
+let pressActive = false, pressTimer = null;
+
+function shutterDown(e) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  pressActive = true;
+  try { tapzone.setPointerCapture(e.pointerId); } catch {}
+  clearTimeout(pressTimer);
+  pressTimer = setTimeout(() => { if (pressActive) startRecording(); }, LONG_PRESS_MS);
+}
+function shutterUp() {
+  if (!pressActive) return;
+  pressActive = false;
+  clearTimeout(pressTimer);
+  if (recording) stopRecording();
+  else capturePhoto();
+}
+tapzone.addEventListener('pointerdown', shutterDown);
+tapzone.addEventListener('pointerup', shutterUp);
+tapzone.addEventListener('pointercancel', shutterUp);
+// Clavier / lecteurs d'écran
+shutterBtn.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && !recording) { e.preventDefault(); capturePhoto(); }
+});
+
+/* ---------- Enregistrement vidéo (canvas → MediaRecorder) ---------- */
+const MAX_VIDEO_MS = 60000;               // 1 minute maximum
+const RING_C = 289.03;                    // circonférence de l'anneau (r=46)
+let recording = false;
+let mediaRecorder = null, recordChunks = [], recordAudio = null;
+let recordStartAt = 0, recordRaf = 0, recordTimeout = 0;
+
+function pickVideoMime() {
+  const candidates = [
+    'video/mp4;codecs=h264,aac',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+  ];
+  if (!window.MediaRecorder) return '';
+  for (const t of candidates) {
+    try { if (MediaRecorder.isTypeSupported(t)) return t; } catch {}
+  }
+  return '';
+}
+
+async function startRecording() {
+  if (recording || !session) return;
+  const canvas = $('ck-canvas');
+  if (!canvas.captureStream || !window.MediaRecorder) {
+    toast('La vidéo n\'est pas supportée par ce navigateur.');
+    capturePhoto();               // repli : on prend au moins une photo
+    return;
+  }
+  let stream;
+  try { stream = canvas.captureStream(30); }
+  catch { toast("Impossible de démarrer la vidéo."); return; }
+  // Piste audio (micro) — au mieux ; la vidéo reste muette si refusé.
+  try {
+    recordAudio = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordAudio.getAudioTracks().forEach((t) => stream.addTrack(t));
+  } catch { recordAudio = null; }
+  if (!pressActive && !recording) { stopAudioTrack(); return; } // relâché trop tôt
+
+  const mime = pickVideoMime();
+  const opts = { videoBitsPerSecond: 6000000 };
+  if (mime) opts.mimeType = mime;
+  recordChunks = [];
+  try { mediaRecorder = new MediaRecorder(stream, opts); }
+  catch {
+    try { mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
+    catch { stopAudioTrack(); toast("Enregistrement vidéo indisponible."); return; }
+  }
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recordChunks.push(e.data); };
+  mediaRecorder.onstop = finishRecording;
+  try { mediaRecorder.start(); }
+  catch { stopAudioTrack(); toast("Enregistrement vidéo indisponible."); return; }
+
+  recording = true;
+  recordStartAt = Date.now();
+  shutterBtn.classList.add('recording');
+  $('btn-flip').disabled = true;
+  $('rec-timer').hidden = false;
+  hideHint();
+  tickRecord();
+  recordTimeout = setTimeout(stopRecording, MAX_VIDEO_MS);
+}
+
+function tickRecord() {
+  const elapsed = Math.min(Date.now() - recordStartAt, MAX_VIDEO_MS);
+  const frac = elapsed / MAX_VIDEO_MS;
+  $('ring-fill').style.strokeDashoffset = String(RING_C * (1 - frac));
+  const s = Math.floor(elapsed / 1000);
+  $('rec-time').textContent = `0:${String(s).padStart(2, '0')}`;
+  if (recording) recordRaf = requestAnimationFrame(tickRecord);
+}
+
+function stopRecording() {
+  if (!recording) return;
+  recording = false;
+  clearTimeout(recordTimeout);
+  cancelAnimationFrame(recordRaf);
+  try { mediaRecorder.stop(); } catch { finishRecording(); }
+}
+
+function stopAudioTrack() {
+  if (recordAudio) { recordAudio.getTracks().forEach((t) => t.stop()); recordAudio = null; }
+}
+
+function finishRecording() {
+  stopAudioTrack();
+  shutterBtn.classList.remove('recording');
+  $('btn-flip').disabled = false;
+  $('rec-timer').hidden = true;
+  $('ring-fill').style.strokeDashoffset = String(RING_C);
+  const type = (recordChunks[0] && recordChunks[0].type) || pickVideoMime() || 'video/mp4';
+  const blob = new Blob(recordChunks, { type });
+  recordChunks = [];
+  if (!blob.size) { toast("La vidéo est vide, réessayez."); return; }
+  lastVideoBlob = blob;
+  lastKind = 'video';
+  mediaB64Cache = null;
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(blob);
+  const img = $('preview-img');
+  img.hidden = true; img.removeAttribute('src');
+  const v = $('preview-video');
+  v.hidden = false; v.muted = false; v.src = previewUrl;
+  v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+  show('screen-preview');
+  try { session.pause(); } catch {}
+}
+
+/* ---------- Indice « maintiens pour filmer » ---------- */
+let hintShown = false;
+function showHintOnce() {
+  if (hintShown) return; hintShown = true;
+  const h = $('shutter-hint');
+  h.classList.add('show');
+  setTimeout(() => h.classList.remove('show'), 3500);
+}
+function hideHint() { $('shutter-hint').classList.remove('show'); }
 
 const backToCamera = () => {
   show(null);
   try { session.play(); } catch {}
-  // On nettoie l'aperçu pour ne jamais revoir l'ancienne photo
+  // On nettoie l'aperçu pour ne jamais revoir l'ancien média
   const img = $('preview-img');
-  img.removeAttribute('src');
+  img.removeAttribute('src'); img.hidden = false;
+  const v = $('preview-video');
+  v.pause(); v.removeAttribute('src'); v.hidden = true;
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
 };
 $('btn-back').addEventListener('click', backToCamera);
@@ -675,7 +919,10 @@ $('btn-retake').addEventListener('click', backToCamera);
 /* Onglet en arrière-plan → caméra en pause (batterie) */
 document.addEventListener('visibilitychange', () => {
   if (!session) return;
-  if (document.hidden) { try { session.pause(); } catch {} }
+  if (document.hidden) {
+    if (recording) stopRecording();     // on ne filme pas en arrière-plan
+    try { session.pause(); } catch {}
+  }
   else if ($('screen-preview').hidden) { try { session.play(); } catch {} }
 });
 
@@ -716,14 +963,16 @@ function blobToBase64(blob) {
 }
 
 async function sendToApp(action) {
-  if (photoB64Cache === null) {
-    photoB64Cache = await blobToBase64(lastPhotoBlob); // converti 1 seule fois
+  if (mediaB64Cache === null) {
+    mediaB64Cache = await blobToBase64(currentBlob()); // converti 1 seule fois
   }
   return bridgeSend({
-    action, // 'save' ou 'share'
-    filename: `seddo-joj2026-${Date.now()}.jpg`,
+    action,          // 'save' ou 'share'
+    kind: lastKind,  // 'photo' ou 'video'
+    mime: currentMime(),
+    filename: `seddo-${Date.now()}.${currentExt()}`,
     text: `Mon souvenir du Sénégal avec Seddo 🇸🇳 ${CONFIG.HASHTAG}`,
-    data: photoB64Cache,
+    data: mediaB64Cache,
   });
 }
 
@@ -742,29 +991,31 @@ async function withBusy(fn) {
 }
 
 $('btn-save').addEventListener('click', () => {
-  if (!lastPhotoBlob) return;
+  const blob = currentBlob();
+  if (!blob) return;
   withBusy(async () => {
     if (hasBridge()) {             // Dans une app native → galerie
       try { await sendToApp('save'); } catch { toast('Enregistrement impossible.'); }
       return;
     }
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(lastPhotoBlob);
-    a.download = `seddo-joj2026-${Date.now()}.jpg`;
+    a.href = URL.createObjectURL(blob);
+    a.download = `seddo-${Date.now()}.${currentExt()}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    toast('Photo enregistrée ✓');
+    toast(lastKind === 'video' ? 'Vidéo enregistrée ✓' : 'Photo enregistrée ✓');
   });
 });
 
 $('btn-share').addEventListener('click', () => {
-  if (!lastPhotoBlob) return;
+  const blob = currentBlob();
+  if (!blob) return;
   withBusy(async () => {
     if (hasBridge()) {             // Dans une app native → partage natif
       try { await sendToApp('share'); } catch { toast('Partage impossible.'); }
       return;
     }
-    const file = new File([lastPhotoBlob], 'seddo-joj2026.jpg', { type: 'image/jpeg' });
+    const file = new File([blob], `seddo-${Date.now()}.${currentExt()}`, { type: currentMime() });
     const shareText = `Mon souvenir du Sénégal avec Seddo 🇸🇳 ${CONFIG.HASHTAG}`;
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {

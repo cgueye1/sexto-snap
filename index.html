@@ -312,10 +312,8 @@ const CONFIG = {
   HASHTAG: '#JOJ2026',
   // Appui long sur l'obturateur → ouverture du MÊME filtre (celui sélectionné)
   // dans Snapchat. Le lien est le lien OFFICIEL du lens, fourni par le SDK
-  // (lens.snapcode.deepLink) — pas besoin de le coder en dur.
-  // Repli « app non installée » (l'app hôte peut s'en servir)
-  SNAP_APPSTORE_URL: 'https://apps.apple.com/app/snapchat/id447188370',
-  SNAP_PLAYSTORE_URL: 'https://play.google.com/store/apps/details?id=com.snapchat.android',
+  // (lens.snapcode.deepLink) — pas besoin de le coder en dur. Ce même deeplink
+  // sert aussi de repli « app non installée » (la page Snap propose l'install).
 };
 
 if (new URLSearchParams(location.search).has('debug')) {
@@ -774,8 +772,9 @@ function openSnapLens() {
       action: 'openUrl',
       url,
       lensId: lens && lens.id,
-      appStoreUrl: CONFIG.SNAP_APPSTORE_URL,
-      playStoreUrl: CONFIG.SNAP_PLAYSTORE_URL,
+      // Même deeplink en repli : la page Snap gère l'installation en gardant le filtre.
+      appStoreUrl: url,
+      playStoreUrl: url,
     });
     if (sent) return;
   }

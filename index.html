@@ -105,32 +105,12 @@
     50% { box-shadow: 0 0 0 7px rgba(232,68,46,.55), 0 4px 18px rgba(0,0,0,.35); }
   }
 
-  /* Anneau de progression de l'enregistrement vidéo */
-  .shutter .ring-progress {
-    position: absolute; inset: -9px; width: calc(100% + 18px); height: calc(100% + 18px);
-    transform: rotate(-90deg); pointer-events: none;
-    opacity: 0; transition: opacity .2s ease;
+  /* Appui long prêt → ouverture du filtre sur Snapchat (anneau jaune Snap) */
+  .shutter.holding {
+    border-color: #FFFC00;
+    transform: translate(-50%,-50%) scale(1.12);
+    box-shadow: 0 0 0 4px rgba(255,252,0,.35), 0 4px 18px rgba(0,0,0,.35);
   }
-  .shutter .ring-progress circle { fill: none; stroke-linecap: round; }
-  .shutter .ring-track { stroke: rgba(255,255,255,.20); stroke-width: 5; }
-  .shutter .ring-fill {
-    stroke: var(--seddo); stroke-width: 6;
-    stroke-dasharray: 289.03; stroke-dashoffset: 289.03;
-    filter: drop-shadow(0 0 4px rgba(232,68,46,.6));
-  }
-  /* Pastille rouge centrale, visible pendant l'enregistrement */
-  .shutter .rec-dot {
-    position: absolute; top: 50%; left: 50%;
-    width: 26px; height: 26px; border-radius: 8px; background: var(--seddo);
-    transform: translate(-50%,-50%) scale(0);
-    transition: transform .22s cubic-bezier(.22,1.2,.4,1); pointer-events: none;
-  }
-  .shutter.recording {
-    border-color: rgba(255,255,255,.4);
-    transform: translate(-50%,-50%) scale(1.08);
-  }
-  .shutter.recording .ring-progress { opacity: 1; }
-  .shutter.recording .rec-dot { transform: translate(-50%,-50%) scale(1); }
 
   /* Indice sous l'obturateur */
   .shutter-hint {
@@ -143,24 +123,6 @@
   .shutter-hint.show { opacity: 1; }
 
   .glassbtn:disabled { opacity: .35; pointer-events: none; }
-
-  /* Minuteur d'enregistrement (haut de l'écran) */
-  .rec-timer {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 16px); left: 50%;
-    transform: translateX(-50%); z-index: 6;
-    display: inline-flex; align-items: center; gap: 8px;
-    background: rgba(0,0,0,.55); color: #fff;
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    padding: 7px 15px 7px 12px; border-radius: 999px;
-    font-size: 14px; font-weight: 700; letter-spacing: .02em;
-    font-variant-numeric: tabular-nums;
-  }
-  .rec-timer[hidden] { display: none; }
-  .rec-timer .live {
-    width: 9px; height: 9px; border-radius: 50%; background: var(--seddo);
-    animation: recpulse 1s ease-in-out infinite;
-  }
-  @keyframes recpulse { 50% { opacity: .2; transform: scale(.8); } }
 
   /* ---------- Écrans ---------- */
   .screen {
@@ -190,21 +152,10 @@
   /* ---------- Aperçu / partage ---------- */
   #screen-preview { padding: 0; place-items: stretch; background: #000; }
   .preview-wrap { position: relative; width: 100%; height: 100%; }
-  #preview-img, #preview-video {
+  #preview-img {
     position: absolute; inset: 0; width: 100%; height: 100%;
     object-fit: contain; background: #000;
   }
-  #preview-img[hidden], #preview-video[hidden] { display: none; }
-  .mute-hint {
-    position: absolute; left: 50%; z-index: 2;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 150px);
-    transform: translateX(-50%);
-    background: rgba(0,0,0,.55); color: #fff; font-size: 12.5px; font-weight: 600;
-    padding: 8px 15px; border-radius: 999px; white-space: nowrap;
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    pointer-events: none;
-  }
-  .mute-hint[hidden] { display: none; }
   .preview-top {
     position: absolute; top: 0; left: 0; right: 0; z-index: 2;
     display: flex; align-items: center; justify-content: space-between;
@@ -281,20 +232,11 @@
   <div class="carousel-wrap">
     <div class="lensrow" id="lensrow" role="listbox" aria-label="Filtres"></div>
     <button class="shutter" id="btn-capture"
-            aria-label="Appui court : photo — Appui long : vidéo (1 min max)">
-      <svg class="ring-progress" viewBox="0 0 100 100" aria-hidden="true">
-        <circle class="ring-track" cx="50" cy="50" r="46"/>
-        <circle class="ring-fill" id="ring-fill" cx="50" cy="50" r="46"/>
-      </svg>
+            aria-label="Appui court : photo — Appui long : ouvrir le filtre sur Snapchat">
       <span class="tapzone"></span>
-      <span class="rec-dot" aria-hidden="true"></span>
     </button>
-    <span class="shutter-hint" id="shutter-hint">Maintiens pour filmer</span>
+    <span class="shutter-hint" id="shutter-hint">Maintiens pour ouvrir sur Snapchat</span>
   </div>
-</div>
-
-<div class="rec-timer" id="rec-timer" hidden>
-  <span class="live"></span><span id="rec-time">0:00</span>
 </div>
 
 <section class="screen" id="screen-loading">
@@ -317,8 +259,6 @@
 <section class="screen" id="screen-preview" hidden>
   <div class="preview-wrap">
     <img id="preview-img" alt="Votre photo souvenir">
-    <video id="preview-video" playsinline loop hidden></video>
-    <span class="mute-hint" id="mute-hint" hidden>🔇 Toucher pour le son</span>
     <div class="preview-top">
       <button class="glassbtn" id="btn-back" aria-label="Reprendre">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -370,6 +310,8 @@ const CONFIG = {
   ],
   LENS_ID: '3f10f390-d389-4cab-882e-eb309a170768', // secours
   HASHTAG: '#JOJ2026',
+  // Appui long sur l'obturateur → ouverture du même filtre dans Snapchat
+  SNAP_LENS_URL: 'https://www.snapchat.com/unlock/?type=SNAPCODE&uuid=1f5c9edd8c5e4a3a8330db9ba19f0701&metadata=01',
 };
 
 if (new URLSearchParams(location.search).has('debug')) {
@@ -407,18 +349,7 @@ function fail(title, msg) {
 
 let cameraKit = null, session = null, lenses = [];
 let facing = 'user', mediaStream = null, lastPhotoBlob = null;
-let lastVideoBlob = null, lastKind = 'photo';   // 'photo' | 'video'
 let appliedLensId = null;
-
-function currentBlob() { return lastKind === 'video' ? lastVideoBlob : lastPhotoBlob; }
-function currentMime() {
-  if (lastKind !== 'video') return 'image/jpeg';
-  return (lastVideoBlob && lastVideoBlob.type) || 'video/mp4';
-}
-function currentExt() {
-  if (lastKind !== 'video') return 'jpg';
-  return currentMime().includes('webm') ? 'webm' : 'mp4';
-}
 
 /* ---------- Démarrage ---------- */
 async function start() {
@@ -509,7 +440,6 @@ async function attachCamera(mode) {
 }
 
 $('btn-flip').addEventListener('click', async () => {
-  if (recording) return; // pas de changement de caméra en plein tournage
   facing = facing === 'user' ? 'environment' : 'user';
   try { await attachCamera(facing); await session.play(); }
   catch {
@@ -747,15 +677,10 @@ async function capturePhoto() {
   try {
     const blob = await grabFrame();
     lastPhotoBlob = blob;
-    lastKind = 'photo';
-    mediaB64Cache = null;                       // nouveau média → cache invalidé
+    mediaB64Cache = null;                       // nouvelle photo → cache invalidé
     if (previewUrl) URL.revokeObjectURL(previewUrl); // libère l'ancienne image
     previewUrl = URL.createObjectURL(blob);
-    const v = $('preview-video');
-    v.pause(); v.removeAttribute('src'); v.hidden = true;
-    $('mute-hint').hidden = true;
     const img = $('preview-img');
-    img.hidden = false;
     img.src = previewUrl;
     try { await img.decode(); } catch {}        // garantit la NOUVELLE image à l'écran
     show('screen-preview');
@@ -765,204 +690,65 @@ async function capturePhoto() {
   }
 }
 
-/* ---------- Obturateur : appui court = photo, appui long = vidéo ----------
-   Un même bouton, façon Snapchat. Tap → photo. Maintien → enregistrement
-   vidéo (1 min max), relâchement → arrêt. */
+/* ---------- Obturateur : appui court = photo, appui long = ouvrir sur Snapchat ----------
+   Un même bouton, façon Snapchat. Tap → photo. Maintien → on ouvre le MÊME
+   filtre directement dans l'app Snapchat (bien plus fluide et fiable que
+   d'enregistrer une vidéo dans le navigateur). */
 const shutterBtn = $('btn-capture');
 const tapzone = shutterBtn.querySelector('.tapzone');
-const LONG_PRESS_MS = 260;
-let pressActive = false, pressTimer = null;
+const LONG_PRESS_MS = 350;
+let pressActive = false, pressTimer = null, longReady = false;
 
 function shutterDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   e.preventDefault();
   pressActive = true;
+  longReady = false;
   try { tapzone.setPointerCapture(e.pointerId); } catch {}
   clearTimeout(pressTimer);
-  pressTimer = setTimeout(() => { if (pressActive) startRecording(); }, LONG_PRESS_MS);
+  // Au bout de l'appui long : on « arme » l'ouverture Snapchat (retour visuel).
+  pressTimer = setTimeout(() => {
+    if (!pressActive) return;
+    longReady = true;
+    shutterBtn.classList.add('holding');
+    hideHint();
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
+  }, LONG_PRESS_MS);
 }
 function shutterUp() {
   if (!pressActive) return;
   pressActive = false;
   clearTimeout(pressTimer);
-  if (recording) stopRecording();
+  shutterBtn.classList.remove('holding');
+  // Le relâchement est un geste utilisateur → window.open autorisé.
+  if (longReady) { longReady = false; openSnapLens(); }
   else capturePhoto();
+}
+function shutterCancel() {
+  pressActive = false; longReady = false;
+  clearTimeout(pressTimer);
+  shutterBtn.classList.remove('holding');
 }
 tapzone.addEventListener('pointerdown', shutterDown);
 tapzone.addEventListener('pointerup', shutterUp);
-tapzone.addEventListener('pointercancel', shutterUp);
-// Clavier / lecteurs d'écran
+tapzone.addEventListener('pointercancel', shutterCancel);
+// Clavier / lecteurs d'écran : Entrée/Espace = photo, « S » = Snapchat
 shutterBtn.addEventListener('keydown', (e) => {
-  if ((e.key === 'Enter' || e.key === ' ') && !recording) { e.preventDefault(); capturePhoto(); }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); capturePhoto(); }
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); openSnapLens(); }
 });
 
-/* ---------- Enregistrement vidéo (canvas WebGL → canvas 2D miroir → MediaRecorder) ----------
-   On NE capture PAS directement le canvas WebGL de Camera Kit : sur beaucoup
-   de mobiles, captureStream() d'un canvas WebGL renvoie des images NOIRES
-   (le tampon de dessin est vidé après composition). On recopie donc chaque
-   image dans un canvas 2D — exactement comme la photo, qui elle fonctionne —
-   et on enregistre CE canvas-là. */
-const MAX_VIDEO_MS = 60000;               // 1 minute maximum
-const RING_C = 289.03;                    // circonférence de l'anneau (r=46)
-const REC_MAX_EDGE = 1280;                // grand côté vidéo : léger + fluide
-let recording = false;
-let mediaRecorder = null, recordChunks = [], recordAudio = null;
-let recordStartAt = 0, recordRaf = 0, recordTimeout = 0;
-let recCanvas = null, recCtx = null, recDrawRaf = 0;
-
-function pickVideoMime() {
-  const candidates = [
-    'video/mp4;codecs=h264,aac',
-    'video/mp4',
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm',
-  ];
-  if (!window.MediaRecorder) return '';
-  for (const t of candidates) {
-    try { if (MediaRecorder.isTypeSupported(t)) return t; } catch {}
-  }
-  return '';
+/* Ouvre le même filtre dans l'app Snapchat (ou la page Snap si l'app est absente). */
+function openSnapLens() {
+  const url = CONFIG.SNAP_LENS_URL;
+  if (!url) return;
+  toast('Ouverture du filtre sur Snapchat…', 1800);
+  let win = null;
+  try { win = window.open(url, '_blank'); } catch {}
+  if (!win) { try { location.href = url; } catch {} } // repli si le popup est bloqué
 }
 
-/* Boucle de recopie WebGL → 2D pendant l'enregistrement */
-function startMirror() {
-  const src = $('ck-canvas');
-  const scale = Math.min(1, REC_MAX_EDGE / Math.max(src.width || 1, src.height || 1));
-  recCanvas = document.createElement('canvas');
-  recCanvas.width = Math.max(2, Math.round((src.width || 720) * scale));
-  recCanvas.height = Math.max(2, Math.round((src.height || 1280) * scale));
-  recCtx = recCanvas.getContext('2d');
-  const draw = () => {
-    if (!recCanvas) return;
-    try { recCtx.drawImage(src, 0, 0, recCanvas.width, recCanvas.height); } catch {}
-    recDrawRaf = requestAnimationFrame(draw);
-  };
-  draw();
-  return recCanvas;
-}
-function stopMirror() {
-  cancelAnimationFrame(recDrawRaf);
-  recCanvas = null; recCtx = null;
-}
-
-async function startRecording() {
-  if (recording || !session) return;
-  const canStream = !!HTMLCanvasElement.prototype.captureStream;
-  if (!window.MediaRecorder || !canStream) {
-    toast('Vidéo non supportée ici.');
-    capturePhoto();                 // repli : au moins une photo
-    return;
-  }
-
-  const mirror = startMirror();
-  let stream;
-  try { stream = mirror.captureStream(30); }
-  catch { stopMirror(); toast("Impossible de démarrer la vidéo."); return; }
-
-  // Piste audio (micro) — au mieux ; la vidéo reste muette si refusé.
-  try {
-    recordAudio = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recordAudio.getAudioTracks().forEach((t) => stream.addTrack(t));
-  } catch { recordAudio = null; }
-  if (!pressActive && !recording) { stopAudioTrack(); stopMirror(); return; } // relâché trop tôt
-
-  const mime = pickVideoMime();
-  const opts = { videoBitsPerSecond: 3500000, audioBitsPerSecond: 128000 };
-  if (mime) opts.mimeType = mime;
-  recordChunks = [];
-  try { mediaRecorder = new MediaRecorder(stream, opts); }
-  catch {
-    try { mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
-    catch { stopAudioTrack(); stopMirror(); toast("Enregistrement vidéo indisponible."); return; }
-  }
-  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recordChunks.push(e.data); };
-  mediaRecorder.onstop = finishRecording;
-  try { mediaRecorder.start(); }
-  catch { stopAudioTrack(); stopMirror(); toast("Enregistrement vidéo indisponible."); return; }
-
-  recording = true;
-  recordStartAt = Date.now();
-  shutterBtn.classList.add('recording');
-  $('btn-flip').disabled = true;
-  $('rec-timer').hidden = false;
-  hideHint();
-  tickRecord();
-  recordTimeout = setTimeout(stopRecording, MAX_VIDEO_MS);
-}
-
-function tickRecord() {
-  const elapsed = Math.min(Date.now() - recordStartAt, MAX_VIDEO_MS);
-  const frac = elapsed / MAX_VIDEO_MS;
-  $('ring-fill').style.strokeDashoffset = String(RING_C * (1 - frac));
-  const s = Math.floor(elapsed / 1000);
-  $('rec-time').textContent = `0:${String(s).padStart(2, '0')}`;
-  if (recording) recordRaf = requestAnimationFrame(tickRecord);
-}
-
-function stopRecording() {
-  if (!recording) return;
-  recording = false;
-  clearTimeout(recordTimeout);
-  cancelAnimationFrame(recordRaf);
-  try { mediaRecorder.stop(); } catch { finishRecording(); }
-}
-
-function stopAudioTrack() {
-  if (recordAudio) { recordAudio.getTracks().forEach((t) => t.stop()); recordAudio = null; }
-}
-
-function finishRecording() {
-  stopAudioTrack();
-  stopMirror();
-  shutterBtn.classList.remove('recording');
-  $('btn-flip').disabled = false;
-  $('rec-timer').hidden = true;
-  $('ring-fill').style.strokeDashoffset = String(RING_C);
-  const type = (recordChunks[0] && recordChunks[0].type) || pickVideoMime() || 'video/mp4';
-  const blob = new Blob(recordChunks, { type });
-  recordChunks = [];
-  if (!blob.size) { toast("La vidéo est vide, réessayez."); return; }
-  lastVideoBlob = blob;
-  lastKind = 'video';
-  mediaB64Cache = null;
-  if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = URL.createObjectURL(blob);
-  const img = $('preview-img');
-  img.hidden = true; img.removeAttribute('src');
-  const v = $('preview-video');
-  // Lecture MUETTE garantie (autoplay autorisé) → on voit la vidéo tout de
-  // suite ; un tap sur la vidéo réactive le son.
-  v.hidden = false; v.muted = true; v.playsInline = true; v.src = previewUrl;
-  v.load();
-  const tryPlay = () => v.play().catch(() => {});
-  v.oncanplay = tryPlay;
-  tryPlay();
-  updateMuteHint();
-  show('screen-preview');
-  try { session.pause(); } catch {}
-}
-
-/* Tap sur la vidéo = couper / activer le son */
-(() => {
-  const v = $('preview-video');
-  v.addEventListener('click', () => {
-    v.muted = !v.muted;
-    if (!v.muted) v.play().catch(() => {});
-    updateMuteHint();
-  });
-})();
-function updateMuteHint() {
-  const v = $('preview-video');
-  if (lastKind === 'video' && !$('screen-preview').hidden) {
-    $('mute-hint').hidden = false;
-    $('mute-hint').textContent = v.muted ? '🔇 Toucher pour le son' : '🔊 Son activé';
-  } else {
-    $('mute-hint').hidden = true;
-  }
-}
-
-/* ---------- Indice « maintiens pour filmer » ---------- */
+/* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */
 let hintShown = false;
 function showHintOnce() {
   if (hintShown) return; hintShown = true;
@@ -975,12 +761,9 @@ function hideHint() { $('shutter-hint').classList.remove('show'); }
 const backToCamera = () => {
   show(null);
   try { session.play(); } catch {}
-  // On nettoie l'aperçu pour ne jamais revoir l'ancien média
+  // On nettoie l'aperçu pour ne jamais revoir l'ancienne photo
   const img = $('preview-img');
-  img.removeAttribute('src'); img.hidden = false;
-  const v = $('preview-video');
-  v.pause(); v.removeAttribute('src'); v.hidden = true;
-  $('mute-hint').hidden = true;
+  img.removeAttribute('src');
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
 };
 $('btn-back').addEventListener('click', backToCamera);
@@ -989,10 +772,7 @@ $('btn-retake').addEventListener('click', backToCamera);
 /* Onglet en arrière-plan → caméra en pause (batterie) */
 document.addEventListener('visibilitychange', () => {
   if (!session) return;
-  if (document.hidden) {
-    if (recording) stopRecording();     // on ne filme pas en arrière-plan
-    try { session.pause(); } catch {}
-  }
+  if (document.hidden) { try { session.pause(); } catch {} }
   else if ($('screen-preview').hidden) { try { session.play(); } catch {} }
 });
 
@@ -1034,13 +814,13 @@ function blobToBase64(blob) {
 
 async function sendToApp(action) {
   if (mediaB64Cache === null) {
-    mediaB64Cache = await blobToBase64(currentBlob()); // converti 1 seule fois
+    mediaB64Cache = await blobToBase64(lastPhotoBlob); // converti 1 seule fois
   }
   return bridgeSend({
     action,          // 'save' ou 'share'
-    kind: lastKind,  // 'photo' ou 'video'
-    mime: currentMime(),
-    filename: `seddo-${Date.now()}.${currentExt()}`,
+    kind: 'photo',
+    mime: 'image/jpeg',
+    filename: `seddo-${Date.now()}.jpg`,
     text: `Mon souvenir du Sénégal avec Seddo 🇸🇳 ${CONFIG.HASHTAG}`,
     data: mediaB64Cache,
   });
@@ -1061,31 +841,29 @@ async function withBusy(fn) {
 }
 
 $('btn-save').addEventListener('click', () => {
-  const blob = currentBlob();
-  if (!blob) return;
+  if (!lastPhotoBlob) return;
   withBusy(async () => {
     if (hasBridge()) {             // Dans une app native → galerie
       try { await sendToApp('save'); } catch { toast('Enregistrement impossible.'); }
       return;
     }
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `seddo-${Date.now()}.${currentExt()}`;
+    a.href = URL.createObjectURL(lastPhotoBlob);
+    a.download = `seddo-${Date.now()}.jpg`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    toast(lastKind === 'video' ? 'Vidéo enregistrée ✓' : 'Photo enregistrée ✓');
+    toast('Photo enregistrée ✓');
   });
 });
 
 $('btn-share').addEventListener('click', () => {
-  const blob = currentBlob();
-  if (!blob) return;
+  if (!lastPhotoBlob) return;
   withBusy(async () => {
     if (hasBridge()) {             // Dans une app native → partage natif
       try { await sendToApp('share'); } catch { toast('Partage impossible.'); }
       return;
     }
-    const file = new File([blob], `seddo-${Date.now()}.${currentExt()}`, { type: currentMime() });
+    const file = new File([lastPhotoBlob], `seddo-${Date.now()}.jpg`, { type: 'image/jpeg' });
     const shareText = `Mon souvenir du Sénégal avec Seddo 🇸🇳 ${CONFIG.HASHTAG}`;
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {

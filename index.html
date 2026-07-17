@@ -311,9 +311,8 @@ const CONFIG = {
   LENS_ID: '3f10f390-d389-4cab-882e-eb309a170768', // secours
   HASHTAG: '#JOJ2026',
   // Appui long sur l'obturateur → ouverture du MÊME filtre (celui sélectionné)
-  // dans Snapchat. L'URL est construite dynamiquement à partir de l'ID du lens :
-  //   https://www.snapchat.com/unlock/?type=SNAPCODE&uuid=<ID_SANS_TIRETS>&metadata=01
-  SNAP_UNLOCK_TEMPLATE: 'https://www.snapchat.com/unlock/?type=SNAPCODE&uuid={uuid}&metadata=01',
+  // dans Snapchat. Le lien est le lien OFFICIEL du lens, fourni par le SDK
+  // (lens.snapcode.deepLink) — pas besoin de le coder en dur.
   // Repli « app non installée » (l'app hôte peut s'en servir)
   SNAP_APPSTORE_URL: 'https://apps.apple.com/app/snapchat/id447188370',
   SNAP_PLAYSTORE_URL: 'https://play.google.com/store/apps/details?id=com.snapchat.android',
@@ -743,18 +742,19 @@ shutterBtn.addEventListener('keydown', (e) => {
   else if (e.key === 's' || e.key === 'S') { e.preventDefault(); openSnapLens(); }
 });
 
-/* ID du lens actuellement sélectionné (centré dans l'anneau). */
-function currentLensId() {
+/* Objet lens actuellement sélectionné (centré dans l'anneau). */
+function currentLens() {
   const el = document.querySelector('.lens.centered');
-  if (el && el.dataset.id) return el.dataset.id;   // filtre centré
-  if (appliedLensId) return appliedLensId;          // secours : filtre appliqué
-  return (lenses[0] && lenses[0].id) || null;       // dernier recours : 1er filtre
+  const id = (el && el.dataset.id) || appliedLensId || (lenses[0] && lenses[0].id);
+  return lenses.find((l) => l.id === id) || null;
 }
 
-/* Construit l'URL Snapchat d'unlock pour un lens donné (uuid = id sans tirets). */
-function snapUnlockUrl(lensId) {
-  const uuid = String(lensId).replace(/-/g, '');
-  return CONFIG.SNAP_UNLOCK_TEMPLATE.replace('{uuid}', uuid);
+/* Lien Snapchat du lens. On privilégie le lien OFFICIEL fourni par le SDK
+   (lens.snapcode.deepLink) : reconstruire l'URL depuis l'ID ne marche pas
+   (l'UUID du Snapcode ≠ l'ID Camera Kit → « contenu introuvable »). */
+function snapLensUrl(lens) {
+  if (lens && lens.snapcode && lens.snapcode.deepLink) return lens.snapcode.deepLink;
+  return null;
 }
 
 /* Ouvre LE FILTRE SÉLECTIONNÉ dans l'app Snapchat (ou l'App Store / Play Store si absente).
@@ -763,16 +763,17 @@ function snapUnlockUrl(lensId) {
    transmet donc via le pont (action 'openUrl'). En navigateur classique, on
    ouvre un nouvel onglet, avec repli en navigation directe. */
 function openSnapLens() {
-  const lensId = currentLensId();
-  if (!lensId) { toast('Choisis d\'abord un filtre.'); return; }
-  const url = snapUnlockUrl(lensId);
+  const lens = currentLens();
+  const url = snapLensUrl(lens);
+  console.log('[Seddo] Snap deeplink:', url, 'lens:', lens && lens.id);
+  if (!url) { toast("Ce filtre n'a pas de lien Snapchat."); return; }
   toast('Ouverture de Snapchat…', 1800);
   // 1) WebView native → l'app hôte ouvre le lien EN EXTERNE.
   if (hasBridge()) {
     const sent = bridgeSend({
       action: 'openUrl',
       url,
-      lensId,
+      lensId: lens && lens.id,
       appStoreUrl: CONFIG.SNAP_APPSTORE_URL,
       playStoreUrl: CONFIG.SNAP_PLAYSTORE_URL,
     });

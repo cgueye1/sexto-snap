@@ -32,8 +32,8 @@ html = html.replace(/<script type="module">([\s\S]*?)<\/script>/, (_, js) => {
     stringArrayThreshold: 0.85,
     stringArrayRotate: true,
     stringArrayShuffle: true,
-    splitStrings: true,
-    splitStringsChunkLength: 8,
+    splitStrings: false,
+    // splitStringsChunkLength: 8, // désactivé : ralentit le parsing mobile
     // Désactivés exprès : trop coûteux à l'exécution sur mobile
     controlFlowFlattening: false,
     deadCodeInjection: false,

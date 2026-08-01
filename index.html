@@ -69,6 +69,20 @@
     user-drag: none;
     touch-action: manipulation;
   }
+  button, .lens, .lens .thumb, .shutter, .tapzone, .bottombar {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
+    touch-action: none;
+  }
+  .shutter, .tapzone {
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
   .lens {
     flex: 0 0 auto; width: 56px; height: 56px;
     border: none; background: none; padding: 0; cursor: pointer;
@@ -269,8 +283,9 @@
 <div class="bottombar" id="ui-bottom" hidden>
   <div class="carousel-wrap">
     <div class="lensrow" id="lensrow" role="listbox" aria-label="Filtres"></div>
-    <button class="shutter" id="btn-capture"
-            aria-label="Appui court : photo — Appui long : ouvrir le filtre sur Snapchat">
+    <button class="shutter" id="btn-capture" type="button"
+            aria-label="Appui court : photo — Appui long : ouvrir le filtre sur Snapchat"
+            oncontextmenu="return false;">
       <span class="tapzone"></span>
     </button>
     <span class="shutter-hint" id="shutter-hint">Maintiens pour ouvrir sur Snapchat</span>
@@ -664,9 +679,10 @@ function gestureCancel() {
 bar.addEventListener('touchstart', (e) => {
   if (e.touches.length > 1) return;
   if (e.target.closest('.shutter')) return; // géré par l'obturateur (appui court/long)
+  e.preventDefault();
   const t = e.changedTouches[0];
   gestureStart(t.clientX, e.timeStamp, e.target);
-}, { passive: true });
+}, { passive: false });
 
 bar.addEventListener('touchmove', (e) => {
   if (!drag) return;
@@ -783,7 +799,6 @@ function shutterDown(e) {
   pressStartY = e.clientY;
   try { tapzone.setPointerCapture(e.pointerId); } catch {}
   clearTimeout(pressTimer);
-  // Au bout de l'appui long : on « arme » l'ouverture Snapchat (retour visuel).
   pressTimer = setTimeout(() => {
     if (!pressActive) return;
     longReady = true;
@@ -803,8 +818,6 @@ function shutterUp(e) {
   pressActive = false;
   clearTimeout(pressTimer);
   shutterBtn.classList.remove('holding');
-  try { tapzone.releasePointerCapture(e.pointerId); } catch {}
-  // Le relâchement est un geste utilisateur → window.open autorisé.
   if (longReady) { longReady = false; openSnapLens(); }
   else capturePhoto();
 }
@@ -817,6 +830,11 @@ tapzone.addEventListener('pointerdown', shutterDown);
 tapzone.addEventListener('pointermove', shutterMove);
 tapzone.addEventListener('pointerup', shutterUp);
 tapzone.addEventListener('pointercancel', shutterCancel);
+tapzone.addEventListener('touchstart', shutterDown, { passive: false });
+tapzone.addEventListener('touchmove', shutterMove, { passive: false });
+tapzone.addEventListener('touchend', shutterUp, { passive: false });
+tapzone.addEventListener('touchcancel', shutterCancel);
+tapzone.addEventListener('contextmenu', (e) => e.preventDefault());
 tapzone.addEventListener('pointerleave', shutterCancel);
 // Clavier / lecteurs d'écran : Entrée/Espace = photo, « S » = Snapchat
 shutterBtn.addEventListener('keydown', (e) => {

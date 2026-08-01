@@ -149,6 +149,21 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .filter-loader {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-items: center;
+    background: rgba(0,0,0,0.32);
+    pointer-events: none; opacity: 0; transition: opacity .2s ease;
+  }
+  .filter-loader.show { opacity: 1; pointer-events: auto; }
+  .filter-loader .panel {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 14px 16px; border-radius: 14px;
+    background: rgba(0,0,0,0.66); border: 1px solid rgba(255,255,255,.12);
+    backdrop-filter: blur(12px);
+  }
+  .filter-loader .label { color: #fff; font-weight: 700; font-size: 14px; }
+
   /* ---------- Aperçu / partage ---------- */
   #screen-preview { padding: 0; place-items: stretch; background: #000; }
   .preview-wrap { position: relative; width: 100%; height: 100%; }
@@ -214,6 +229,13 @@
 <body>
 
 <div id="stage"><canvas id="ck-canvas"></canvas></div>
+
+<div class="filter-loader" id="filter-loader" aria-hidden="true">
+  <div class="panel">
+    <div class="spinner" aria-hidden="true"></div>
+    <span class="label" id="filter-loading-msg">Chargement des filtres…</span>
+  </div>
+</div>
 
 <div class="topbar" id="ui-top" hidden>
   <span aria-hidden="true"></span>
@@ -331,6 +353,15 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const screens = ['screen-loading', 'screen-error', 'screen-preview'];
+const filterLoader = () => document.getElementById('filter-loader');
+const filterLoadingMsg = () => document.getElementById('filter-loading-msg');
+function setFilterLoader(active, message) {
+  const el = filterLoader();
+  const msg = filterLoadingMsg();
+  if (!el) return;
+  if (message && msg) msg.textContent = message;
+  if (active) el.classList.add('show'); else el.classList.remove('show');
+}
 function show(screenId) {
   screens.forEach((s) => { $(s).hidden = s !== screenId; });
   const cam = screenId === null;
@@ -367,6 +398,7 @@ async function start() {
     await attachCamera(facing);
 
     $('loading-msg').textContent = 'Chargement des filtres…';
+    setFilterLoader(true, 'Chargement des filtres…');
     if (!lenses.length) {
       for (const gid of CONFIG.LENS_GROUP_IDS) {
         try {
@@ -382,6 +414,7 @@ async function start() {
         } catch (e) { console.error('[Seddo] Lens par ID:', e); }
       }
       buildLensRow();
+      setFilterLoader(false);
     }
     await session.play();
     show(null);
@@ -489,15 +522,21 @@ async function applyIndex(i) {
   if (el.dataset.none) {
     if (appliedLensId !== null) {
       appliedLensId = null;
-      try { await session.removeLens(); } catch {}
+      try {
+        setFilterLoader(true, 'Suppression du filtre…');
+        await session.removeLens();
+      } catch {} finally { setFilterLoader(false); }
     }
     return;
   }
   const lens = lenses.find((l) => l.id === el.dataset.id);
   if (!lens || lens.id === appliedLensId) return;
   appliedLensId = lens.id;
-  try { await session.applyLens(lens); }
-  catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
+  try {
+    setFilterLoader(true, 'Chargement du filtre…');
+    await session.applyLens(lens);
+  } catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
+  finally { setFilterLoader(false); }
 }
 
 /* Centre l'index dans l'anneau et applique son filtre */
@@ -535,9 +574,16 @@ function buildLensRow() {
     const icon = lens.iconUrl ? `style="background-image:url('${lens.iconUrl}')"` : '';
     b.innerHTML =
       `<span class="label">${lens.name || 'Filtre'}</span>` +
-      `<span class="thumb" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
+      `<span class="thumb" draggable="false" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
     b.addEventListener('click', () => centerLens(b)); // clavier
+    // Prevent long-press download / context menu on thumb
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
     row.appendChild(b);
+    const thumb = b.querySelector('.thumb');
+    if (thumb) {
+      thumb.addEventListener('dragstart', (ev) => ev.preventDefault());
+      thumb.addEventListener('contextmenu', (ev) => ev.preventDefault());
+    }
   });
   snapTo(0, false);
 }

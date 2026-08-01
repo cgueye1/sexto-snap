@@ -371,8 +371,9 @@ function setFilterLoader(active, message = 'Chargement du filtre…', requestId 
     filterLoader.classList.add('show');
     return filterLoadingRequest;
   }
-  if (requestId !== filterLoadingRequest) return;
-  filterLoader.classList.remove('show');
+  if (requestId === null || requestId === filterLoadingRequest) {
+    filterLoader.classList.remove('show');
+  }
 }
 function show(screenId) {
   screens.forEach((s) => { $(s).hidden = s !== screenId; });
@@ -397,6 +398,31 @@ let facing = 'user', mediaStream = null, lastPhotoBlob = null;
 let appliedLensId = null;
 
 /* ---------- Démarrage ---------- */
+async function loadLensData() {
+  $('loading-msg').textContent = 'Chargement des filtres…';
+  await Promise.all(CONFIG.LENS_GROUP_IDS.map(async (gid) => {
+    try {
+      const res = await cameraKit.lensRepository.loadLensGroups([gid]);
+      lenses.push(...(res.lenses || []));
+    } catch (e) {
+      console.error(`[Seddo] Groupe ${gid}:`, e);
+    }
+  }));
+  if (CONFIG.LENS_ID && !lenses.some((l) => l.id === CONFIG.LENS_ID)) {
+    try {
+      const lens = await cameraKit.lensRepository
+        .loadLens(CONFIG.LENS_ID, CONFIG.LENS_GROUP_IDS[0]);
+      if (lens) lenses.unshift(lens);
+    } catch (e) { console.error('[Seddo] Lens par ID:', e); }
+  }
+  buildLensRow();
+  requestAnimationFrame(() => {
+    const first = document.querySelector('.lens[data-id]');
+    if (first) centerLens(first, 'auto');
+    else toast('Aucun filtre disponible pour le moment.', 5000);
+  });
+}
+
 async function start() {
   show('screen-loading');
   try {
@@ -408,32 +434,16 @@ async function start() {
         console.error('CameraKit error:', e.detail));
     }
     await attachCamera(facing);
-
-    $('loading-msg').textContent = 'Chargement des filtres…';
-    if (!lenses.length) {
-      for (const gid of CONFIG.LENS_GROUP_IDS) {
-        try {
-          const res = await cameraKit.lensRepository.loadLensGroups([gid]);
-          lenses.push(...(res.lenses || []));
-        } catch (e) { console.error(`[Seddo] Groupe ${gid}:`, e); }
-      }
-      if (CONFIG.LENS_ID && !lenses.some((l) => l.id === CONFIG.LENS_ID)) {
-        try {
-          const lens = await cameraKit.lensRepository
-            .loadLens(CONFIG.LENS_ID, CONFIG.LENS_GROUP_IDS[0]);
-          if (lens) lenses.unshift(lens);
-        } catch (e) { console.error('[Seddo] Lens par ID:', e); }
-      }
-      buildLensRow();
-    }
-    await session.play();
     show(null);
-    // Centre le premier filtre dans l'anneau (le sélectionne)
-    requestAnimationFrame(() => {
-      const first = document.querySelector('.lens[data-id]');
-      if (first) centerLens(first, 'auto');
-      else toast('Aucun filtre disponible pour le moment.', 5000);
+    await session.play().catch((err) => {
+      console.error('CameraKit play failed:', err);
+      throw err;
     });
+    if (!lenses.length) {
+      loadLensData().catch((err) => {
+        console.error('[Seddo] Chargement des filtres échoué :', err);
+      });
+    }
     showHintOnce();
   } catch (err) {
     console.error(err);
@@ -748,12 +758,15 @@ const shutterBtn = $('btn-capture');
 const tapzone = shutterBtn.querySelector('.tapzone');
 const LONG_PRESS_MS = 350;
 let pressActive = false, pressTimer = null, longReady = false;
+let pressStartX = 0, pressStartY = 0;
 
 function shutterDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   e.preventDefault();
   pressActive = true;
   longReady = false;
+  pressStartX = e.clientX;
+  pressStartY = e.clientY;
   try { tapzone.setPointerCapture(e.pointerId); } catch {}
   clearTimeout(pressTimer);
   // Au bout de l'appui long : on « arme » l'ouverture Snapchat (retour visuel).
@@ -764,6 +777,12 @@ function shutterDown(e) {
     hideHint();
     if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
   }, LONG_PRESS_MS);
+}
+function shutterMove(e) {
+  if (!pressActive) return;
+  if (Math.abs(e.clientX - pressStartX) > 10 || Math.abs(e.clientY - pressStartY) > 10) {
+    shutterCancel();
+  }
 }
 function shutterUp() {
   if (!pressActive) return;
@@ -780,6 +799,7 @@ function shutterCancel() {
   shutterBtn.classList.remove('holding');
 }
 tapzone.addEventListener('pointerdown', shutterDown);
+tapzone.addEventListener('pointermove', shutterMove);
 tapzone.addEventListener('pointerup', shutterUp);
 tapzone.addEventListener('pointercancel', shutterCancel);
 // Clavier / lecteurs d'écran : Entrée/Espace = photo, « S » = Snapchat

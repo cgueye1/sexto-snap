@@ -1081,6 +1081,28 @@ window.addEventListener('resize', () => {
   }, 250);
 });
 
+// ★ FIX GEL FLUTTER WEBVIEW : fonction appelée par Flutter (via runJavaScript)
+// quand l'utilisateur revient depuis Snapchat. Relance la caméra Camera Kit
+// sans recharger la page (= zéro perte d'état, zéro freeze).
+window.__seddoResume = function() {
+  console.log('[Seddo] resume depuis app externe');
+  if (!session) return;
+  try { session.play(); } catch(e) { console.warn('[Seddo] resume play:', e); }
+  // Si la caméra s'est mise en pause (visibilitychange), on la relance
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(function(t) {
+      if (t.readyState === 'ended') {
+        // Piste morte → réinitialiser complètement la caméra
+        attachCamera(facing).then(function() {
+          try { session.play(); } catch(e) {}
+        }).catch(function(e) {
+          console.warn('[Seddo] resume attachCamera:', e);
+        });
+      }
+    });
+  }
+};
+
 window.addEventListener('load', start);
 </script>
 </body>

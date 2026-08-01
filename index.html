@@ -61,15 +61,18 @@
     display: flex; align-items: center; gap: 16px;
     will-change: transform;
   }
-  .lens {
-    flex: 0 0 auto; width: 56px; height: 56px;
-    border: none; background: none; padding: 0; cursor: pointer;
-    position: relative;
+  button, .lens, .lens .thumb, .shutter, .tapzone, .bottombar {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
     -webkit-user-drag: none;
     user-drag: none;
+    touch-action: manipulation;
+  }
+  .lens {
+    flex: 0 0 auto; width: 56px; height: 56px;
+    border: none; background: none; padding: 0; cursor: pointer;
+    position: relative;
   }
   .lens .thumb {
     width: 56px; height: 56px; border-radius: 50%;
@@ -78,11 +81,6 @@
     display: grid; place-items: center; font-size: 22px; color: #fff;
     transition: transform .18s ease;
     backdrop-filter: blur(8px);
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-user-drag: none;
-    user-drag: none;
   }
   .lens.centered .thumb { transform: scale(1.12); border-color: transparent; }
   .lens .label {
@@ -524,6 +522,11 @@ console.log('[Seddo] carrousel v3 (transform)'); // repère de version déployé
 
 const items = () => [...row.querySelectorAll('.lens')];
 row.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('.lens') || e.target.closest('.shutter') || e.target.closest('#ui-bottom')) {
+    e.preventDefault();
+  }
+});
 const xForIndex = (i) => -(i * PITCH + HALF);
 const clampIndex = (i) => Math.max(0, Math.min(items().length - 1, i));
 const indexForX = (x) => clampIndex(Math.round((-x - HALF) / PITCH));

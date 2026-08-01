@@ -881,9 +881,20 @@ function openSnapLens() {
     if (sent) return;
   }
   // 2) Navigateur classique.
+  try { location.href = url; return; } catch {}
   let win = null;
   try { win = window.open(url, '_blank'); } catch {}
-  if (!win) { try { location.href = url; } catch {} }
+  if (!win) {
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_self';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {}
+  }
 }
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */

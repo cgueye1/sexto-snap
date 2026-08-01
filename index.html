@@ -624,6 +624,13 @@ function buildLensRow() {
       `<span class="label">${lens.name || 'Filtre'}</span>` +
       `<span class="thumb" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
     b.addEventListener('click', () => centerLens(b)); // clavier
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    b.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) e.preventDefault();
+    }, { passive: false });
+    b.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') e.preventDefault();
+    });
     row.appendChild(b);
   });
   snapTo(0, false);
@@ -897,10 +904,23 @@ function openSnapLens() {
   // 2) Navigateur classique.
   if (appUrl && appUrl !== url) {
     try {
-      location.href = appUrl;
-      setTimeout(() => { location.href = url; }, 700);
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = appUrl;
+      document.body.appendChild(iframe);
+      const fallback = setTimeout(() => {
+        if (!document.hidden) location.href = url;
+      }, 700);
+      const cleanup = () => {
+        clearTimeout(fallback);
+        window.removeEventListener('visibilitychange', cleanup);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      };
+      window.addEventListener('visibilitychange', cleanup);
       return;
-    } catch {}
+    } catch (e) {
+      console.warn('[Seddo] Échec du lancement Snapchat via iframe :', e);
+    }
   }
   try { location.href = url; return; } catch {}
   let win = null;

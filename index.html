@@ -61,28 +61,6 @@
     display: flex; align-items: center; gap: 16px;
     will-change: transform;
   }
-  button, .lens, .lens .thumb, .shutter, .tapzone, .bottombar {
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-user-drag: none;
-    user-drag: none;
-    touch-action: manipulation;
-  }
-  button, .lens, .lens .thumb, .shutter, .tapzone, .bottombar {
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-user-drag: none;
-    user-drag: none;
-    touch-action: none;
-  }
-  .shutter, .tapzone {
-    touch-action: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-  }
   .lens {
     flex: 0 0 auto; width: 56px; height: 56px;
     border: none; background: none; padding: 0; cursor: pointer;
@@ -171,29 +149,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .filter-loader {
-    position: fixed; inset: 0; z-index: 12;
-    display: grid; place-items: center;
-    background: rgba(0, 0, 0, 0.32);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity .2s ease;
-  }
-  .filter-loader.show { opacity: 1; }
-  .filter-loader .panel {
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-    padding: 16px 18px;
-    background: rgba(0, 0, 0, 0.66);
-    border: 1px solid rgba(255,255,255,.16);
-    border-radius: 18px;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  .filter-loader .label {
-    color: #fff; font-size: 14px; font-weight: 700;
-    letter-spacing: .03em; white-space: nowrap;
-  }
-
   /* ---------- Aperçu / partage ---------- */
   #screen-preview { padding: 0; place-items: stretch; background: #000; }
   .preview-wrap { position: relative; width: 100%; height: 100%; }
@@ -260,13 +215,6 @@
 
 <div id="stage"><canvas id="ck-canvas"></canvas></div>
 
-<div class="filter-loader" id="filter-loader" aria-hidden="true">
-  <div class="panel">
-    <div class="spinner" aria-hidden="true"></div>
-    <span class="label" id="filter-loading-msg">Chargement du filtre…</span>
-  </div>
-</div>
-
 <div class="topbar" id="ui-top" hidden>
   <span aria-hidden="true"></span>
   <button class="glassbtn" id="btn-flip" aria-label="Changer de caméra">
@@ -283,9 +231,8 @@
 <div class="bottombar" id="ui-bottom" hidden>
   <div class="carousel-wrap">
     <div class="lensrow" id="lensrow" role="listbox" aria-label="Filtres"></div>
-    <button class="shutter" id="btn-capture" type="button"
-            aria-label="Appui court : photo — Appui long : ouvrir le filtre sur Snapchat"
-            oncontextmenu="return false;">
+    <button class="shutter" id="btn-capture"
+            aria-label="Appui court : photo — Appui long : ouvrir le filtre sur Snapchat">
       <span class="tapzone"></span>
     </button>
     <span class="shutter-hint" id="shutter-hint">Maintiens pour ouvrir sur Snapchat</span>
@@ -384,20 +331,6 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const screens = ['screen-loading', 'screen-error', 'screen-preview'];
-const filterLoader = $('filter-loader');
-const filterLoadingMsg = $('filter-loading-msg');
-let filterLoadingRequest = 0;
-function setFilterLoader(active, message = 'Chargement du filtre…', requestId = null) {
-  if (active) {
-    filterLoadingRequest += 1;
-    filterLoadingMsg.textContent = message;
-    filterLoader.classList.add('show');
-    return filterLoadingRequest;
-  }
-  if (requestId === null || requestId === filterLoadingRequest) {
-    filterLoader.classList.remove('show');
-  }
-}
 function show(screenId) {
   screens.forEach((s) => { $(s).hidden = s !== screenId; });
   const cam = screenId === null;
@@ -421,31 +354,6 @@ let facing = 'user', mediaStream = null, lastPhotoBlob = null;
 let appliedLensId = null;
 
 /* ---------- Démarrage ---------- */
-async function loadLensData() {
-  $('loading-msg').textContent = 'Chargement des filtres…';
-  await Promise.all(CONFIG.LENS_GROUP_IDS.map(async (gid) => {
-    try {
-      const res = await cameraKit.lensRepository.loadLensGroups([gid]);
-      lenses.push(...(res.lenses || []));
-    } catch (e) {
-      console.error(`[Seddo] Groupe ${gid}:`, e);
-    }
-  }));
-  if (CONFIG.LENS_ID && !lenses.some((l) => l.id === CONFIG.LENS_ID)) {
-    try {
-      const lens = await cameraKit.lensRepository
-        .loadLens(CONFIG.LENS_ID, CONFIG.LENS_GROUP_IDS[0]);
-      if (lens) lenses.unshift(lens);
-    } catch (e) { console.error('[Seddo] Lens par ID:', e); }
-  }
-  buildLensRow();
-  requestAnimationFrame(() => {
-    const first = document.querySelector('.lens[data-id]');
-    if (first) centerLens(first, 'auto');
-    else toast('Aucun filtre disponible pour le moment.', 5000);
-  });
-}
-
 async function start() {
   show('screen-loading');
   try {
@@ -457,16 +365,32 @@ async function start() {
         console.error('CameraKit error:', e.detail));
     }
     await attachCamera(facing);
-    show(null);
-    await session.play().catch((err) => {
-      console.error('CameraKit play failed:', err);
-      throw err;
-    });
+
+    $('loading-msg').textContent = 'Chargement des filtres…';
     if (!lenses.length) {
-      loadLensData().catch((err) => {
-        console.error('[Seddo] Chargement des filtres échoué :', err);
-      });
+      for (const gid of CONFIG.LENS_GROUP_IDS) {
+        try {
+          const res = await cameraKit.lensRepository.loadLensGroups([gid]);
+          lenses.push(...(res.lenses || []));
+        } catch (e) { console.error(`[Seddo] Groupe ${gid}:`, e); }
+      }
+      if (CONFIG.LENS_ID && !lenses.some((l) => l.id === CONFIG.LENS_ID)) {
+        try {
+          const lens = await cameraKit.lensRepository
+            .loadLens(CONFIG.LENS_ID, CONFIG.LENS_GROUP_IDS[0]);
+          if (lens) lenses.unshift(lens);
+        } catch (e) { console.error('[Seddo] Lens par ID:', e); }
+      }
+      buildLensRow();
     }
+    await session.play();
+    show(null);
+    // Centre le premier filtre dans l'anneau (le sélectionne)
+    requestAnimationFrame(() => {
+      const first = document.querySelector('.lens[data-id]');
+      if (first) centerLens(first, 'auto');
+      else toast('Aucun filtre disponible pour le moment.', 5000);
+    });
     showHintOnce();
   } catch (err) {
     console.error(err);
@@ -505,7 +429,7 @@ async function attachCamera(mode) {
   if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
   mediaStream = await navigator.mediaDevices.getUserMedia({
     // On demande le meilleur flux dispo (le rendu, lui, reste plafonné)
-    video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
+    video: { facingMode: mode, width: { ideal: 1920 }, height: { ideal: 1080 } },
     audio: false,
   });
   const source = createMediaStreamSource(mediaStream, {
@@ -536,12 +460,6 @@ const HALF = 28;  // demi-vignette
 console.log('[Seddo] carrousel v3 (transform)'); // repère de version déployée
 
 const items = () => [...row.querySelectorAll('.lens')];
-row.addEventListener('contextmenu', (e) => e.preventDefault());
-document.addEventListener('contextmenu', (e) => {
-  if (e.target.closest('.lens') || e.target.closest('.shutter') || e.target.closest('#ui-bottom')) {
-    e.preventDefault();
-  }
-});
 const xForIndex = (i) => -(i * PITCH + HALF);
 const clampIndex = (i) => Math.max(0, Math.min(items().length - 1, i));
 const indexForX = (x) => clampIndex(Math.round((-x - HALF) / PITCH));
@@ -569,22 +487,17 @@ async function applyIndex(i) {
   const el = items()[i];
   if (!el) return;
   if (el.dataset.none) {
-    if (appliedLensId === null) return;
-    const loaderId = setFilterLoader(true, 'Chargement du filtre…');
-    appliedLensId = null;
-    try { await session.removeLens(); } catch {}
-    finally { setFilterLoader(false, undefined, loaderId); }
+    if (appliedLensId !== null) {
+      appliedLensId = null;
+      try { await session.removeLens(); } catch {}
+    }
     return;
   }
   const lens = lenses.find((l) => l.id === el.dataset.id);
   if (!lens || lens.id === appliedLensId) return;
-  const loaderId = setFilterLoader(true, 'Chargement du filtre…');
   appliedLensId = lens.id;
   try { await session.applyLens(lens); }
-  catch (e) {
-    console.error(e); toast("Ce filtre n'a pas pu être chargé.");
-  }
-  finally { setFilterLoader(false, undefined, loaderId); }
+  catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
 }
 
 /* Centre l'index dans l'anneau et applique son filtre */
@@ -624,22 +537,6 @@ function buildLensRow() {
       `<span class="label">${lens.name || 'Filtre'}</span>` +
       `<span class="thumb" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
     b.addEventListener('click', () => centerLens(b)); // clavier
-    b.addEventListener('contextmenu', (e) => e.preventDefault());
-    b.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) e.preventDefault();
-    }, { passive: false });
-    b.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch') e.preventDefault();
-    });
-    // Ensure the thumb doesn't trigger native drag/download on long press
-    requestAnimationFrame(() => {
-      const thumb = b.querySelector('.thumb');
-      if (thumb) {
-        thumb.setAttribute('draggable', 'false');
-        thumb.addEventListener('dragstart', (ev) => ev.preventDefault());
-        thumb.addEventListener('contextmenu', (ev) => ev.preventDefault());
-      }
-    });
     row.appendChild(b);
   });
   snapTo(0, false);
@@ -695,10 +592,9 @@ function gestureCancel() {
 bar.addEventListener('touchstart', (e) => {
   if (e.touches.length > 1) return;
   if (e.target.closest('.shutter')) return; // géré par l'obturateur (appui court/long)
-  e.preventDefault();
   const t = e.changedTouches[0];
   gestureStart(t.clientX, e.timeStamp, e.target);
-}, { passive: false });
+}, { passive: true });
 
 bar.addEventListener('touchmove', (e) => {
   if (!drag) return;
@@ -804,17 +700,15 @@ const shutterBtn = $('btn-capture');
 const tapzone = shutterBtn.querySelector('.tapzone');
 const LONG_PRESS_MS = 350;
 let pressActive = false, pressTimer = null, longReady = false;
-let pressStartX = 0, pressStartY = 0;
 
 function shutterDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   e.preventDefault();
   pressActive = true;
   longReady = false;
-  pressStartX = e.clientX;
-  pressStartY = e.clientY;
   try { tapzone.setPointerCapture(e.pointerId); } catch {}
   clearTimeout(pressTimer);
+  // Au bout de l'appui long : on « arme » l'ouverture Snapchat (retour visuel).
   pressTimer = setTimeout(() => {
     if (!pressActive) return;
     longReady = true;
@@ -823,17 +717,12 @@ function shutterDown(e) {
     if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
   }, LONG_PRESS_MS);
 }
-function shutterMove(e) {
-  if (!pressActive) return;
-  if (Math.abs(e.clientX - pressStartX) > 20 || Math.abs(e.clientY - pressStartY) > 20) {
-    shutterCancel();
-  }
-}
-function shutterUp(e) {
+function shutterUp() {
   if (!pressActive) return;
   pressActive = false;
   clearTimeout(pressTimer);
   shutterBtn.classList.remove('holding');
+  // Le relâchement est un geste utilisateur → window.open autorisé.
   if (longReady) { longReady = false; openSnapLens(); }
   else capturePhoto();
 }
@@ -843,15 +732,8 @@ function shutterCancel() {
   shutterBtn.classList.remove('holding');
 }
 tapzone.addEventListener('pointerdown', shutterDown);
-tapzone.addEventListener('pointermove', shutterMove);
 tapzone.addEventListener('pointerup', shutterUp);
 tapzone.addEventListener('pointercancel', shutterCancel);
-tapzone.addEventListener('touchstart', shutterDown, { passive: false });
-tapzone.addEventListener('touchmove', shutterMove, { passive: false });
-tapzone.addEventListener('touchend', shutterUp, { passive: false });
-tapzone.addEventListener('touchcancel', shutterCancel);
-tapzone.addEventListener('contextmenu', (e) => e.preventDefault());
-tapzone.addEventListener('pointerleave', shutterCancel);
 // Clavier / lecteurs d'écran : Entrée/Espace = photo, « S » = Snapchat
 shutterBtn.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); capturePhoto(); }
@@ -873,65 +755,33 @@ function snapLensUrl(lens) {
   return null;
 }
 
-function snapLensAppUrl(url) {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.endsWith('snapchat.com')) {
-      return url.replace(/^https:\/\/(www\.)?snapchat\.com/i, 'snapchat://');
-    }
-  } catch (e) {
-    console.warn('[Seddo] Impossible de parser le deeplink Snapchat :', url, e);
-  }
-  return url;
-}
-
 /* Ouvre LE FILTRE SÉLECTIONNÉ dans l'app Snapchat (ou l'App Store / Play Store si absente).
    ⚠️ En WebView native, window.open est bloqué et les liens https ne partent
    pas vers l'app externe : c'est l'app HÔTE qui doit ouvrir l'URL. On la lui
    transmet donc via le pont (action 'openUrl'). En navigateur classique, on
-   tente d'abord le schéma snapchat://, puis on revient au lien web si l'app
-   n'est pas installée. */
+   ouvre un nouvel onglet, avec repli en navigation directe. */
 function openSnapLens() {
   const lens = currentLens();
   const url = snapLensUrl(lens);
-  const appUrl = snapLensAppUrl(url);
-  console.log('[Seddo] Snap deeplink:', url, 'appUrl:', appUrl, 'lens:', lens && lens.id);
+  console.log('[Seddo] Snap deeplink:', url, 'lens:', lens && lens.id);
   if (!url) { toast("Ce filtre n'a pas de lien Snapchat."); return; }
   toast('Ouverture de Snapchat…', 1800);
   // 1) WebView native → l'app hôte ouvre le lien EN EXTERNE.
   if (hasBridge()) {
     const sent = bridgeSend({
       action: 'openUrl',
-      url: appUrl || url,
+      url,
       lensId: lens && lens.id,
+      // Même deeplink en repli : la page Snap gère l'installation en gardant le filtre.
       appStoreUrl: url,
       playStoreUrl: url,
     });
     if (sent) return;
   }
-  // 2) Navigateur classique. Use platform-specific approach to avoid chooser/blank pages.
-  const ua = navigator.userAgent || '';
-  const isAndroid = /Android/i.test(ua);
-  const isIOS = /iP(hone|od|ad)/i.test(ua);
-  if (isAndroid && url) {
-    try {
-      const parsed = new URL(url);
-      const path = parsed.pathname + (parsed.search || '') + (parsed.hash || '');
-      const intentUrl = `intent://${parsed.hostname}${path}#Intent;scheme=${parsed.protocol.replace(':','')};package=com.snapchat.android;S.browser_fallback_url=${encodeURIComponent(url)};end`;
-      location.href = intentUrl;
-      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
-      return;
-    } catch (e) { console.warn('[Seddo] intent:// build failed', e); }
-  }
-  if (isIOS && appUrl && appUrl !== url) {
-    try {
-      location.href = appUrl; // safari will open snapchat:// if installed
-      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
-      return;
-    } catch (e) { console.warn('[Seddo] iOS open failed', e); }
-  }
-  try { location.href = appUrl || url; return; } catch (e) { console.warn('[Seddo] final open failed', e); }
+  // 2) Navigateur classique.
+  let win = null;
+  try { win = window.open(url, '_blank'); } catch {}
+  if (!win) { try { location.href = url; } catch {} }
 }
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */

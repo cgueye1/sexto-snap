@@ -65,6 +65,11 @@
     flex: 0 0 auto; width: 56px; height: 56px;
     border: none; background: none; padding: 0; cursor: pointer;
     position: relative;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
   }
   .lens .thumb {
     width: 56px; height: 56px; border-radius: 50%;
@@ -73,6 +78,11 @@
     display: grid; place-items: center; font-size: 22px; color: #fff;
     transition: transform .18s ease;
     backdrop-filter: blur(8px);
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
   }
   .lens.centered .thumb { transform: scale(1.12); border-color: transparent; }
   .lens .label {
@@ -513,6 +523,7 @@ const HALF = 28;  // demi-vignette
 console.log('[Seddo] carrousel v3 (transform)'); // repère de version déployée
 
 const items = () => [...row.querySelectorAll('.lens')];
+row.addEventListener('contextmenu', (e) => e.preventDefault());
 const xForIndex = (i) => -(i * PITCH + HALF);
 const clampIndex = (i) => Math.max(0, Math.min(items().length - 1, i));
 const indexForX = (x) => clampIndex(Math.round((-x - HALF) / PITCH));

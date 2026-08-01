@@ -428,28 +428,29 @@ async function loadLensData() {
       const res = await cameraKit.lensRepository.loadLensGroups([gid]);
       lenses.push(...(res.lenses || []));
     } catch (e) {
-      console.error(`[Seddo] Groupe ${gid}:`, e);
-    }
-  }));
-  if (CONFIG.LENS_ID && !lenses.some((l) => l.id === CONFIG.LENS_ID)) {
+  // 2) Navigateur classique. Use platform-specific approach to avoid chooser
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const isIOS = /iP(hone|od|ad)/i.test(navigator.userAgent);
+  if (isAndroid && url) {
     try {
-      const lens = await cameraKit.lensRepository
-        .loadLens(CONFIG.LENS_ID, CONFIG.LENS_GROUP_IDS[0]);
-      if (lens) lenses.unshift(lens);
-    } catch (e) { console.error('[Seddo] Lens par ID:', e); }
+      const parsed = new URL(url);
+      const path = parsed.pathname + (parsed.search || '') + (parsed.hash || '');
+      // Build an Android intent URI that targets Snapchat package and falls back to web URL
+      const intentUrl = `intent://${parsed.hostname}${path}#Intent;scheme=${parsed.protocol.replace(':','')};package=com.snapchat.android;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+      location.href = intentUrl;
+      // Fallback to web page after short delay if app not installed
+      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
+      return;
+    } catch (e) { console.warn('[Seddo] intent:// build failed', e); }
   }
-  buildLensRow();
-  requestAnimationFrame(() => {
-    const first = document.querySelector('.lens[data-id]');
-    if (first) centerLens(first, 'auto');
-    else toast('Aucun filtre disponible pour le moment.', 5000);
-  });
-}
-
-async function start() {
-  show('screen-loading');
-  try {
-    $('loading-msg').textContent = 'Ouverture de la caméra…';
+  if (isIOS && appUrl && appUrl !== url) {
+    try {
+      location.href = appUrl; // safari will open snapchat:// if installed
+      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
+      return;
+    } catch (e) { console.warn('[Seddo] iOS open failed', e); }
+  }
+  try { location.href = appUrl || url; return; } catch (e) { console.warn('[Seddo] final open failed', e); }
     if (!cameraKit) cameraKit = await bootstrapCameraKit({ apiToken: CONFIG.API_TOKEN });
     if (!session) {
       session = await cameraKit.createSession({ liveRenderTarget: $('ck-canvas') });
@@ -624,12 +625,23 @@ function buildLensRow() {
       `<span class="label">${lens.name || 'Filtre'}</span>` +
       `<span class="thumb" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
     b.addEventListener('click', () => centerLens(b)); // clavier
+    // Prevent native long-press download / context menu on mobile browsers
     b.addEventListener('contextmenu', (e) => e.preventDefault());
     b.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) e.preventDefault();
     }, { passive: false });
     b.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch') e.preventDefault();
+    });
+    // Ensure the thumb image is not draggable and doesn't trigger native actions
+    requestAnimationFrame(() => {
+      const thumb = b.querySelector('.thumb');
+      if (thumb) {
+        thumb.setAttribute('draggable', 'false');
+        thumb.addEventListener('dragstart', (ev) => ev.preventDefault());
+        thumb.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        thumb.addEventListener('touchstart', (ev) => { if (ev.touches && ev.touches.length === 1) ev.preventDefault(); }, { passive: false });
+      }
     });
     row.appendChild(b);
   });

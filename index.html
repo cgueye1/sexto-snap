@@ -149,6 +149,29 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .filter-loader {
+    position: fixed; inset: 0; z-index: 12;
+    display: grid; place-items: center;
+    background: rgba(0, 0, 0, 0.32);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .2s ease;
+  }
+  .filter-loader.show { opacity: 1; }
+  .filter-loader .panel {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 16px 18px;
+    background: rgba(0, 0, 0, 0.66);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .filter-loader .label {
+    color: #fff; font-size: 14px; font-weight: 700;
+    letter-spacing: .03em; white-space: nowrap;
+  }
+
   /* ---------- Aperçu / partage ---------- */
   #screen-preview { padding: 0; place-items: stretch; background: #000; }
   .preview-wrap { position: relative; width: 100%; height: 100%; }
@@ -214,6 +237,13 @@
 <body>
 
 <div id="stage"><canvas id="ck-canvas"></canvas></div>
+
+<div class="filter-loader" id="filter-loader" aria-hidden="true">
+  <div class="panel">
+    <div class="spinner" aria-hidden="true"></div>
+    <span class="label" id="filter-loading-msg">Chargement du filtre…</span>
+  </div>
+</div>
 
 <div class="topbar" id="ui-top" hidden>
   <span aria-hidden="true"></span>
@@ -331,6 +361,19 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const screens = ['screen-loading', 'screen-error', 'screen-preview'];
+const filterLoader = $('filter-loader');
+const filterLoadingMsg = $('filter-loading-msg');
+let filterLoadingRequest = 0;
+function setFilterLoader(active, message = 'Chargement du filtre…', requestId = null) {
+  if (active) {
+    filterLoadingRequest += 1;
+    filterLoadingMsg.textContent = message;
+    filterLoader.classList.add('show');
+    return filterLoadingRequest;
+  }
+  if (requestId !== filterLoadingRequest) return;
+  filterLoader.classList.remove('show');
+}
 function show(screenId) {
   screens.forEach((s) => { $(s).hidden = s !== screenId; });
   const cam = screenId === null;
@@ -487,17 +530,22 @@ async function applyIndex(i) {
   const el = items()[i];
   if (!el) return;
   if (el.dataset.none) {
-    if (appliedLensId !== null) {
-      appliedLensId = null;
-      try { await session.removeLens(); } catch {}
-    }
+    if (appliedLensId === null) return;
+    const loaderId = setFilterLoader(true, 'Chargement du filtre…');
+    appliedLensId = null;
+    try { await session.removeLens(); } catch {}
+    finally { setFilterLoader(false, undefined, loaderId); }
     return;
   }
   const lens = lenses.find((l) => l.id === el.dataset.id);
   if (!lens || lens.id === appliedLensId) return;
+  const loaderId = setFilterLoader(true, 'Chargement du filtre…');
   appliedLensId = lens.id;
   try { await session.applyLens(lens); }
-  catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
+  catch (e) {
+    console.error(e); toast("Ce filtre n'a pas pu être chargé.");
+  }
+  finally { setFilterLoader(false, undefined, loaderId); }
 }
 
 /* Centre l'index dans l'anneau et applique son filtre */

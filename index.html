@@ -149,6 +149,42 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ── Loader overlay jaune (changement de filtre) ── */
+  .filter-loader {
+    position: fixed; inset: 0; z-index: 25;
+    display: grid; place-items: center;
+    background: rgba(0,0,0,0.38);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    pointer-events: none; opacity: 0; transition: opacity .18s ease;
+  }
+  .filter-loader.show { opacity: 1; pointer-events: auto; }
+  .filter-loader-inner {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  /* Anneau jaune Snapchat avec queue de comète */
+  .fl-ring {
+    width: 58px; height: 58px; position: relative;
+    border-radius: 50%;
+    animation: flSpin .72s linear infinite;
+  }
+  .fl-ring::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(
+      #FFFC00 0deg, #FFD400 60deg,
+      rgba(255,220,0,.25) 160deg,
+      transparent 200deg, transparent 360deg
+    );
+  }
+  .fl-ring::after {
+    content: ''; position: absolute; inset: 7px; border-radius: 50%;
+    background: rgba(0,0,0,.68);
+  }
+  @keyframes flSpin { to { transform: rotate(360deg); } }
+  .fl-label {
+    font-size: 12px; font-weight: 600; letter-spacing: .05em;
+    color: rgba(255,255,255,.9); text-shadow: 0 1px 6px rgba(0,0,0,.7);
+  }
+
   /* ---------- Aperçu / partage ---------- */
   #screen-preview { padding: 0; place-items: stretch; background: #000; }
   .preview-wrap { position: relative; width: 100%; height: 100%; }
@@ -214,6 +250,14 @@
 <body>
 
 <div id="stage"><canvas id="ck-canvas"></canvas></div>
+
+<!-- Loader overlay : affiché pendant le changement de filtre -->
+<div class="filter-loader" id="filter-loader" aria-hidden="true" aria-live="polite">
+  <div class="filter-loader-inner">
+    <div class="fl-ring"></div>
+    <span class="fl-label" id="filter-loader-label">Chargement…</span>
+  </div>
+</div>
 
 <div class="topbar" id="ui-top" hidden>
   <span aria-hidden="true"></span>
@@ -336,6 +380,15 @@ function show(screenId) {
   const cam = screenId === null;
   $('ui-top').hidden = !cam;
   $('ui-bottom').hidden = !cam;
+}
+function setFilterLoader(active, label) {
+  const el = $('filter-loader');
+  if (!el) return;
+  if (label) {
+    const lbl = $('filter-loader-label');
+    if (lbl) lbl.textContent = label;
+  }
+  if (active) el.classList.add('show'); else el.classList.remove('show');
 }
 function toast(msg, ms = 2600) {
   const t = $('toast');
@@ -496,8 +549,14 @@ async function applyIndex(i) {
   const lens = lenses.find((l) => l.id === el.dataset.id);
   if (!lens || lens.id === appliedLensId) return;
   appliedLensId = lens.id;
-  try { await session.applyLens(lens); }
-  catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
+  try {
+    setFilterLoader(true, lens.name || 'Chargement…');
+    await session.applyLens(lens);
+  } catch (e) {
+    console.error(e); toast("Ce filtre n'a pas pu être chargé.");
+  } finally {
+    setFilterLoader(false);
+  }
 }
 
 /* Centre l'index dans l'anneau et applique son filtre */
@@ -760,6 +819,29 @@ function snapLensUrl(lens) {
    pas vers l'app externe : c'est l'app HÔTE qui doit ouvrir l'URL. On la lui
    transmet donc via le pont (action 'openUrl'). En navigateur classique, on
    ouvre un nouvel onglet, avec repli en navigation directe. */
+/* Demande au bridge Flutter d'ouvrir une URL externe SANS détruire la WebView.
+   Le pont SeddoBridge.postMessage est déclaré dans le NavigationDelegate Flutter.
+   Pour les WebViews qui ne déclarent pas SeddoBridge mais utilisent JavaScriptChannel,
+   on émet aussi un postMessage sur window pour que Flutter puisse l'attraper via
+   onJavaScriptMessage. */
+function requestExternalUrl(url, lensId) {
+  const payload = JSON.stringify({ action: 'openUrl', url, lensId });
+  // Canal 1 : SeddoBridge (Flutter JavascriptChannel nommé "SeddoBridge")
+  if (window.SeddoBridge && window.SeddoBridge.postMessage) {
+    window.SeddoBridge.postMessage(payload); return true;
+  }
+  // Canal 2 : iOS WKWebView messageHandlers
+  const wk = window.webkit && window.webkit.messageHandlers;
+  if (wk && wk.SeddoBridge) { wk.SeddoBridge.postMessage(payload); return true; }
+  // Canal 3 : React Native WebView
+  if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+    window.ReactNativeWebView.postMessage(payload); return true;
+  }
+  // Canal 4 : postMessage standard vers parent (WebView Flutter avec onMessage)
+  try { window.parent.postMessage(JSON.parse(payload), '*'); } catch (_) {}
+  return false;
+}
+
 function openSnapLens() {
   const lens = currentLens();
   const url  = snapLensUrl(lens);
@@ -769,12 +851,10 @@ function openSnapLens() {
   toast('Ouverture de Snapchat…', 1800);
 
   // 1. Bridge natif (Flutter / Android / iOS WKWebView / React Native)
-  // Le bridge ouvre l'URL côté natif sans toucher à la WebView : zéro gel.
-  if (hasBridge()) {
-    const sent = bridgeSend({ action: 'openUrl', url, lensId: lens && lens.id,
-      appStoreUrl: url, playStoreUrl: url });
-    if (sent) return;
-  }
+  // On envoie l'URL via tous les canaux disponibles. Flutter intercepte
+  // l'URL dans NavigationDelegate et l'ouvre avec url_launcher côté Dart,
+  // sans jamais naviguer la WebView → zéro gel au retour.
+  if (requestExternalUrl(url, lens && lens.id)) return;
 
   const ua        = navigator.userAgent || '';
   const isAndroid = /Android/i.test(ua);

@@ -73,11 +73,6 @@
     display: grid; place-items: center; font-size: 22px; color: #fff;
     transition: transform .18s ease;
     backdrop-filter: blur(8px);
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
-    -webkit-user-drag: none;
-    touch-action: manipulation;
   }
   .lens.centered .thumb { transform: scale(1.12); border-color: transparent; }
   .lens .label {
@@ -154,20 +149,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .filter-loader {
-    position: fixed; inset: 0; z-index: 20;
-    display: grid; place-items: center;
-    background: rgba(0,0,0,0.12);
-    pointer-events: none; opacity: 0; transition: opacity .18s ease;
-  }
-  .filter-loader.show { opacity: 1; pointer-events: auto; }
-  .filter-loader .spinner {
-    width: 28px; height: 28px; margin: 0;
-    border: 3px solid rgba(255,255,255,.12);
-    border-top-color: #FFD400; /* yellow */
-    animation: spin .7s linear infinite;
-  }
-
   /* ---------- Aperçu / partage ---------- */
   #screen-preview { padding: 0; place-items: stretch; background: #000; }
   .preview-wrap { position: relative; width: 100%; height: 100%; }
@@ -233,10 +214,6 @@
 <body>
 
 <div id="stage"><canvas id="ck-canvas"></canvas></div>
-
-<div class="filter-loader" id="filter-loader" aria-hidden="true">
-  <div class="spinner" aria-hidden="true"></div>
-</div>
 
 <div class="topbar" id="ui-top" hidden>
   <span aria-hidden="true"></span>
@@ -354,12 +331,6 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const screens = ['screen-loading', 'screen-error', 'screen-preview'];
-const filterLoader = () => document.getElementById('filter-loader');
-function setFilterLoader(active) {
-  const el = filterLoader();
-  if (!el) return;
-  if (active) el.classList.add('show'); else el.classList.remove('show');
-}
 function show(screenId) {
   screens.forEach((s) => { $(s).hidden = s !== screenId; });
   const cam = screenId === null;
@@ -396,7 +367,6 @@ async function start() {
     await attachCamera(facing);
 
     $('loading-msg').textContent = 'Chargement des filtres…';
-    setFilterLoader(true, 'Chargement des filtres…');
     if (!lenses.length) {
       for (const gid of CONFIG.LENS_GROUP_IDS) {
         try {
@@ -412,7 +382,6 @@ async function start() {
         } catch (e) { console.error('[Seddo] Lens par ID:', e); }
       }
       buildLensRow();
-      setFilterLoader(false);
     }
     await session.play();
     show(null);
@@ -520,21 +489,15 @@ async function applyIndex(i) {
   if (el.dataset.none) {
     if (appliedLensId !== null) {
       appliedLensId = null;
-      try {
-        setFilterLoader(true, 'Suppression du filtre…');
-        await session.removeLens();
-      } catch {} finally { setFilterLoader(false); }
+      try { await session.removeLens(); } catch {}
     }
     return;
   }
   const lens = lenses.find((l) => l.id === el.dataset.id);
   if (!lens || lens.id === appliedLensId) return;
   appliedLensId = lens.id;
-  try {
-    setFilterLoader(true, 'Chargement du filtre…');
-    await session.applyLens(lens);
-  } catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
-  finally { setFilterLoader(false); }
+  try { await session.applyLens(lens); }
+  catch (e) { console.error(e); toast("Ce filtre n'a pas pu être chargé."); }
 }
 
 /* Centre l'index dans l'anneau et applique son filtre */
@@ -572,16 +535,9 @@ function buildLensRow() {
     const icon = lens.iconUrl ? `style="background-image:url('${lens.iconUrl}')"` : '';
     b.innerHTML =
       `<span class="label">${lens.name || 'Filtre'}</span>` +
-      `<span class="thumb" draggable="false" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
+      `<span class="thumb" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
     b.addEventListener('click', () => centerLens(b)); // clavier
-    // Prevent long-press download / context menu on thumb
-    b.addEventListener('contextmenu', (e) => e.preventDefault());
     row.appendChild(b);
-    const thumb = b.querySelector('.thumb');
-    if (thumb) {
-      thumb.addEventListener('dragstart', (ev) => ev.preventDefault());
-      thumb.addEventListener('contextmenu', (ev) => ev.preventDefault());
-    }
   });
   snapTo(0, false);
 }
@@ -806,72 +762,59 @@ function snapLensUrl(lens) {
    ouvre un nouvel onglet, avec repli en navigation directe. */
 function openSnapLens() {
   const lens = currentLens();
-  const url = snapLensUrl(lens);
+  const url  = snapLensUrl(lens);
   console.log('[Seddo] Snap deeplink:', url, 'lens:', lens && lens.id);
   if (!url) { toast("Ce filtre n'a pas de lien Snapchat."); return; }
+
   toast('Ouverture de Snapchat…', 1800);
-  // 1) WebView native → l'app hôte ouvre le lien EN EXTERNE.
+
+  // 1. Bridge natif (Flutter / Android / iOS WKWebView / React Native)
   if (hasBridge()) {
-    const sent = bridgeSend({
-      action: 'openUrl',
-      url,
-      lensId: lens && lens.id,
-      // Même deeplink en repli : la page Snap gère l'installation en gardant le filtre.
-      appStoreUrl: url,
-      playStoreUrl: url,
-    });
+    const sent = bridgeSend({ action: 'openUrl', url, lensId: lens && lens.id,
+      appStoreUrl: url, playStoreUrl: url });
     if (sent) return;
   }
-  // 2) Tentatives pour navigateurs/WebView sans bridge :
-  // - iOS : iframe -> snapchat:// -> fallback https
-  // - Android : essayer scheme snapchat://, puis intent://, puis https
-  const ua = navigator.userAgent || '';
+
+  const ua        = navigator.userAgent || '';
   const isAndroid = /Android/i.test(ua);
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  // Construire une tentative de scheme Snapchat à partir de l'URL fournie
-  let nativeScheme = null;
+  const isIOS     = /iPhone|iPad|iPod/i.test(ua);
+
+  // Scheme natif depuis l'URL HTTPS fournie par le SDK
+  let nativeScheme = 'snapchat://';
   try {
-    const _u = new URL(url);
-    nativeScheme = 'snapchat://' + _u.pathname + _u.search + _u.hash;
-  } catch (e) {
-    nativeScheme = 'snapchat://';
+    const u = new URL(url);
+    nativeScheme = 'snapchat://' + u.pathname.replace(/^\//, '') + u.search + u.hash;
+  } catch (_) {}
+
+  // 2. iOS : window.location.href direct (JAMAIS d'iframe sur Safari)
+  // - App installée : ouvre le filtre sans dialog
+  // - App absente  : iOS ignore silencieusement, on redirige après délai
+  if (isIOS) {
+    const before = Date.now();
+    window.location.href = nativeScheme;
+    setTimeout(() => {
+      if (document.hidden) return; // Snapchat s'est ouvert, page en arrière-plan
+      if (Date.now() - before < 1200) window.location.href = url; // fallback install
+    }, 1100);
+    return;
   }
 
+  // 3. Android : intent:// (le plus fiable sur Chrome/WebView)
   if (isAndroid) {
     try {
-      // Première tentative : scheme direct
-      window.location.href = nativeScheme;
-    } catch (e) {}
-    // Si l'app n'est pas installée, après un court délai on tente l'intent
-    setTimeout(() => {
-      try {
-        const intentUrl = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;package=com.snapchat.android;scheme=snapchat;S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
-        window.location.href = intentUrl;
-      } catch (e) {}
-    }, 600);
-    // Et enfin on retombe sur la page web si tout échoue
-    setTimeout(() => { try { window.location.href = url; } catch (e) {} }, 2000);
+      const intent = 'intent://' + url.replace(/^https?:\/\//, '') +
+        '#Intent;package=com.snapchat.android;scheme=snapchat;' +
+        'S.browser_fallback_url=' +
+        encodeURIComponent('https://play.google.com/store/apps/details?id=com.snapchat.android') +
+        ';end';
+      window.location.href = intent;
+    } catch (_) { try { window.location.href = url; } catch (__) {} }
     return;
   }
 
-  if (isIOS) {
-    try {
-      const ifr = document.createElement('iframe');
-      ifr.style.display = 'none';
-      ifr.src = nativeScheme;
-      document.body.appendChild(ifr);
-      setTimeout(() => { try { document.body.removeChild(ifr); } catch (e) {} }, 1000);
-    } catch (e) {}
-    // Fallback web URL if app not installed
-    setTimeout(() => { try { window.location.href = url; } catch (e) {} }, 900);
-    return;
-  }
-
-  // Desktop / autres navigateurs : ouvrir l'URL web dans un nouvel onglet
-  try {
-    const w = window.open(url, '_blank');
-    if (!w) window.location.href = url;
-  } catch (e) { try { window.location.href = url; } catch (e) {} }
+  // 4. Desktop / autres
+  try { const w = window.open(url, '_blank'); if (!w) location.href = url; }
+  catch (_) { try { location.href = url; } catch (__) {} }
 }
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */

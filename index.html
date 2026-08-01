@@ -862,31 +862,7 @@ function snapLensUrl(lens) {
    pas vers l'app externe : c'est l'app HÔTE qui doit ouvrir l'URL. On la lui
    transmet donc via le pont (action 'openUrl'). En navigateur classique, on
    ouvre un nouvel onglet, avec repli en navigation directe. */
-
-   function openSnapLens() {
-  const lens = currentLens();
-  const url = snapLensUrl(lens);
-  console.log('[Seddo] Snap deeplink:', url, 'lens:', lens && lens.id);
-  if (!url) { toast("Ce filtre n'a pas de lien Snapchat."); return; }
-  toast('Ouverture de Snapchat…', 1800);
-  // 1) WebView native → l'app hôte ouvre le lien EN EXTERNE.
-  if (hasBridge()) {
-    const sent = bridgeSend({
-      action: 'openUrl',
-      url,
-      lensId: lens && lens.id,
-      // Même deeplink en repli : la page Snap gère l'installation en gardant le filtre.
-      appStoreUrl: url,
-      playStoreUrl: url,
-    });
-    if (sent) return;
-  }
-  // 2) Navigateur classique.
-  let win = null;
-  try { win = window.open(url, '_blank'); } catch {}
-  if (!win) { try { location.href = url; } catch {} }
-}
-/*function openSnapLens() {
+function openSnapLens() {
   const lens = currentLens();
   const url = snapLensUrl(lens);
   console.log('[Seddo] Snap deeplink:', url, 'lens:', lens && lens.id);
@@ -919,7 +895,7 @@ function snapLensUrl(lens) {
       a.remove();
     } catch {}
   }
-}*/
+}
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */
 let hintShown = false;

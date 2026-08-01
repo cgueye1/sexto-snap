@@ -857,30 +857,51 @@ function snapLensUrl(lens) {
   return null;
 }
 
+function snapLensAppUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith('snapchat.com')) {
+      return url.replace(/^https:\/\/(www\.)?snapchat\.com/i, 'snapchat://');
+    }
+  } catch (e) {
+    console.warn('[Seddo] Impossible de parser le deeplink Snapchat :', url, e);
+  }
+  return url;
+}
+
 /* Ouvre LE FILTRE SÉLECTIONNÉ dans l'app Snapchat (ou l'App Store / Play Store si absente).
    ⚠️ En WebView native, window.open est bloqué et les liens https ne partent
    pas vers l'app externe : c'est l'app HÔTE qui doit ouvrir l'URL. On la lui
    transmet donc via le pont (action 'openUrl'). En navigateur classique, on
-   ouvre un nouvel onglet, avec repli en navigation directe. */
+   tente d'abord le schéma snapchat://, puis on revient au lien web si l'app
+   n'est pas installée. */
 function openSnapLens() {
   const lens = currentLens();
   const url = snapLensUrl(lens);
-  console.log('[Seddo] Snap deeplink:', url, 'lens:', lens && lens.id);
+  const appUrl = snapLensAppUrl(url);
+  console.log('[Seddo] Snap deeplink:', url, 'appUrl:', appUrl, 'lens:', lens && lens.id);
   if (!url) { toast("Ce filtre n'a pas de lien Snapchat."); return; }
   toast('Ouverture de Snapchat…', 1800);
   // 1) WebView native → l'app hôte ouvre le lien EN EXTERNE.
   if (hasBridge()) {
     const sent = bridgeSend({
       action: 'openUrl',
-      url,
+      url: appUrl || url,
       lensId: lens && lens.id,
-      // Même deeplink en repli : la page Snap gère l'installation en gardant le filtre.
       appStoreUrl: url,
       playStoreUrl: url,
     });
     if (sent) return;
   }
   // 2) Navigateur classique.
+  if (appUrl && appUrl !== url) {
+    try {
+      location.href = appUrl;
+      setTimeout(() => { location.href = url; }, 700);
+      return;
+    } catch {}
+  }
   try { location.href = url; return; } catch {}
   let win = null;
   try { win = window.open(url, '_blank'); } catch {}

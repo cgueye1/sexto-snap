@@ -769,6 +769,7 @@ function openSnapLens() {
   toast('Ouverture de Snapchat…', 1800);
 
   // 1. Bridge natif (Flutter / Android / iOS WKWebView / React Native)
+  // Le bridge ouvre l'URL côté natif sans toucher à la WebView : zéro gel.
   if (hasBridge()) {
     const sent = bridgeSend({ action: 'openUrl', url, lensId: lens && lens.id,
       appStoreUrl: url, playStoreUrl: url });
@@ -786,35 +787,73 @@ function openSnapLens() {
     nativeScheme = 'snapchat://' + u.pathname.replace(/^\//, '') + u.search + u.hash;
   } catch (_) {}
 
-  // 2. iOS : window.location.href direct (JAMAIS d'iframe sur Safari)
-  // - App installée : ouvre le filtre sans dialog
-  // - App absente  : iOS ignore silencieusement, on redirige après délai
+  /* PRINCIPE CLÉ : on n'utilise JAMAIS window.location.href (ça navigue
+     la page et la détruit). On utilise un lien <a> temporaire avec
+     target="_blank" ou window.open() — la page reste vivante en arrière-plan
+     et l'utilisateur y revient intact. */
+
+  function openViaLink(href, fallbackHref) {
+    // Crée un lien invisible, le clique (= geste utilisateur autorisé),
+    // le supprime. Si le scheme échoue, on ouvre le fallback HTTPS.
+    const a = document.createElement('a');
+    a.href        = href;
+    a.rel         = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // Si l'app n'est pas installée, ouvrir le lien HTTPS après un court délai
+    // SANS toucher à la page courante (target="_blank" implicite via window.open)
+    if (fallbackHref) {
+      setTimeout(() => {
+        if (!document.hidden) {           // page toujours visible = app absente
+          try { window.open(fallbackHref, '_blank', 'noopener'); } catch (_) {}
+        }
+      }, 1200);
+    }
+  }
+
+  // 2. iOS
   if (isIOS) {
-    const before = Date.now();
-    window.location.href = nativeScheme;
-    setTimeout(() => {
-      if (document.hidden) return; // Snapchat s'est ouvert, page en arrière-plan
-      if (Date.now() - before < 1200) window.location.href = url; // fallback install
-    }, 1100);
+    // Sur iOS, les schemes custom via <a> sont interceptés par Safari
+    // et ouvrent l'app directement (même comportement qu'un tap utilisateur).
+    // La page reste ouverte en arrière-plan, pas de gel au retour.
+    openViaLink(nativeScheme, url);
     return;
   }
 
-  // 3. Android : intent:// (le plus fiable sur Chrome/WebView)
+  // 3. Android : intent:// via <a> target="_blank"
+  // Chrome/WebView intercepte intent:// et ouvre l'app sans naviguer la page.
   if (isAndroid) {
+    const intent = 'intent://' + url.replace(/^https?:\/\//, '') +
+      '#Intent;package=com.snapchat.android;scheme=snapchat;' +
+      'S.browser_fallback_url=' +
+      encodeURIComponent('https://play.google.com/store/apps/details?id=com.snapchat.android') +
+      ';end';
+    // Sur Android on ne peut pas utiliser openViaLink (intent ne marche pas en <a> blank)
+    // On utilise window.open qui crée un contexte séparé et ne détruit pas la page.
     try {
-      const intent = 'intent://' + url.replace(/^https?:\/\//, '') +
-        '#Intent;package=com.snapchat.android;scheme=snapchat;' +
-        'S.browser_fallback_url=' +
-        encodeURIComponent('https://play.google.com/store/apps/details?id=com.snapchat.android') +
-        ';end';
-      window.location.href = intent;
-    } catch (_) { try { window.location.href = url; } catch (__) {} }
+      const w = window.open(intent, '_blank', 'noopener');
+      // Si window.open est bloqué (WebView sans permission), repli iframe
+      if (!w) {
+        const ifr = document.createElement('iframe');
+        ifr.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;';
+        ifr.src = intent;
+        document.body.appendChild(ifr);
+        setTimeout(() => { try { document.body.removeChild(ifr); } catch (_) {} }, 2000);
+      }
+    } catch (_) {}
     return;
   }
 
-  // 4. Desktop / autres
-  try { const w = window.open(url, '_blank'); if (!w) location.href = url; }
-  catch (_) { try { location.href = url; } catch (__) {} }
+  // 4. Desktop / autres : nouvel onglet, la page reste intacte
+  try {
+    const w = window.open(url, '_blank', 'noopener');
+    if (!w) {
+      // Popup bloquée : on ouvre via lien (dernier recours)
+      openViaLink(url, null);
+    }
+  } catch (_) { openViaLink(url, null); }
 }
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */

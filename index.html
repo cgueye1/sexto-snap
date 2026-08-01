@@ -829,10 +829,56 @@ function openSnapLens() {
     });
     if (sent) return;
   }
-  // 2) Navigateur classique.
-  let win = null;
-  try { win = window.open(url, '_blank'); } catch {}
-  if (!win) { try { location.href = url; } catch {} }
+  // 2) Tentatives pour navigateurs/WebView sans bridge :
+  // - iOS : iframe -> snapchat:// -> fallback https
+  // - Android : essayer scheme snapchat://, puis intent://, puis https
+  const ua = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(ua);
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  // Construire une tentative de scheme Snapchat à partir de l'URL fournie
+  let nativeScheme = null;
+  try {
+    const _u = new URL(url);
+    nativeScheme = 'snapchat://' + _u.pathname + _u.search + _u.hash;
+  } catch (e) {
+    nativeScheme = 'snapchat://';
+  }
+
+  if (isAndroid) {
+    try {
+      // Première tentative : scheme direct
+      window.location.href = nativeScheme;
+    } catch (e) {}
+    // Si l'app n'est pas installée, après un court délai on tente l'intent
+    setTimeout(() => {
+      try {
+        const intentUrl = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;package=com.snapchat.android;scheme=snapchat;S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+        window.location.href = intentUrl;
+      } catch (e) {}
+    }, 600);
+    // Et enfin on retombe sur la page web si tout échoue
+    setTimeout(() => { try { window.location.href = url; } catch (e) {} }, 2000);
+    return;
+  }
+
+  if (isIOS) {
+    try {
+      const ifr = document.createElement('iframe');
+      ifr.style.display = 'none';
+      ifr.src = nativeScheme;
+      document.body.appendChild(ifr);
+      setTimeout(() => { try { document.body.removeChild(ifr); } catch (e) {} }, 1000);
+    } catch (e) {}
+    // Fallback web URL if app not installed
+    setTimeout(() => { try { window.location.href = url; } catch (e) {} }, 900);
+    return;
+  }
+
+  // Desktop / autres navigateurs : ouvrir l'URL web dans un nouvel onglet
+  try {
+    const w = window.open(url, '_blank');
+    if (!w) window.location.href = url;
+  } catch (e) { try { window.location.href = url; } catch (e) {} }
 }
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */

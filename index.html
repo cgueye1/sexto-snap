@@ -780,15 +780,16 @@ function shutterDown(e) {
 }
 function shutterMove(e) {
   if (!pressActive) return;
-  if (Math.abs(e.clientX - pressStartX) > 10 || Math.abs(e.clientY - pressStartY) > 10) {
+  if (Math.abs(e.clientX - pressStartX) > 20 || Math.abs(e.clientY - pressStartY) > 20) {
     shutterCancel();
   }
 }
-function shutterUp() {
+function shutterUp(e) {
   if (!pressActive) return;
   pressActive = false;
   clearTimeout(pressTimer);
   shutterBtn.classList.remove('holding');
+  try { tapzone.releasePointerCapture(e.pointerId); } catch {}
   // Le relâchement est un geste utilisateur → window.open autorisé.
   if (longReady) { longReady = false; openSnapLens(); }
   else capturePhoto();
@@ -802,6 +803,7 @@ tapzone.addEventListener('pointerdown', shutterDown);
 tapzone.addEventListener('pointermove', shutterMove);
 tapzone.addEventListener('pointerup', shutterUp);
 tapzone.addEventListener('pointercancel', shutterCancel);
+tapzone.addEventListener('pointerleave', shutterCancel);
 // Clavier / lecteurs d'écran : Entrée/Espace = photo, « S » = Snapchat
 shutterBtn.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); capturePhoto(); }

@@ -428,29 +428,28 @@ async function loadLensData() {
       const res = await cameraKit.lensRepository.loadLensGroups([gid]);
       lenses.push(...(res.lenses || []));
     } catch (e) {
-  // 2) Navigateur classique. Use platform-specific approach to avoid chooser
-  const isAndroid = /Android/i.test(navigator.userAgent);
-  const isIOS = /iP(hone|od|ad)/i.test(navigator.userAgent);
-  if (isAndroid && url) {
+      console.error(`[Seddo] Groupe ${gid}:`, e);
+    }
+  }));
+  if (CONFIG.LENS_ID && !lenses.some((l) => l.id === CONFIG.LENS_ID)) {
     try {
-      const parsed = new URL(url);
-      const path = parsed.pathname + (parsed.search || '') + (parsed.hash || '');
-      // Build an Android intent URI that targets Snapchat package and falls back to web URL
-      const intentUrl = `intent://${parsed.hostname}${path}#Intent;scheme=${parsed.protocol.replace(':','')};package=com.snapchat.android;S.browser_fallback_url=${encodeURIComponent(url)};end`;
-      location.href = intentUrl;
-      // Fallback to web page after short delay if app not installed
-      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
-      return;
-    } catch (e) { console.warn('[Seddo] intent:// build failed', e); }
+      const lens = await cameraKit.lensRepository
+        .loadLens(CONFIG.LENS_ID, CONFIG.LENS_GROUP_IDS[0]);
+      if (lens) lenses.unshift(lens);
+    } catch (e) { console.error('[Seddo] Lens par ID:', e); }
   }
-  if (isIOS && appUrl && appUrl !== url) {
-    try {
-      location.href = appUrl; // safari will open snapchat:// if installed
-      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
-      return;
-    } catch (e) { console.warn('[Seddo] iOS open failed', e); }
-  }
-  try { location.href = appUrl || url; return; } catch (e) { console.warn('[Seddo] final open failed', e); }
+  buildLensRow();
+  requestAnimationFrame(() => {
+    const first = document.querySelector('.lens[data-id]');
+    if (first) centerLens(first, 'auto');
+    else toast('Aucun filtre disponible pour le moment.', 5000);
+  });
+}
+
+async function start() {
+  show('screen-loading');
+  try {
+    $('loading-msg').textContent = 'Ouverture de la caméra…';
     if (!cameraKit) cameraKit = await bootstrapCameraKit({ apiToken: CONFIG.API_TOKEN });
     if (!session) {
       session = await cameraKit.createSession({ liveRenderTarget: $('ck-canvas') });
@@ -625,7 +624,6 @@ function buildLensRow() {
       `<span class="label">${lens.name || 'Filtre'}</span>` +
       `<span class="thumb" ${icon}>${lens.iconUrl ? '' : '🎩'}</span>`;
     b.addEventListener('click', () => centerLens(b)); // clavier
-    // Prevent native long-press download / context menu on mobile browsers
     b.addEventListener('contextmenu', (e) => e.preventDefault());
     b.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) e.preventDefault();
@@ -633,14 +631,13 @@ function buildLensRow() {
     b.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch') e.preventDefault();
     });
-    // Ensure the thumb image is not draggable and doesn't trigger native actions
+    // Ensure the thumb doesn't trigger native drag/download on long press
     requestAnimationFrame(() => {
       const thumb = b.querySelector('.thumb');
       if (thumb) {
         thumb.setAttribute('draggable', 'false');
         thumb.addEventListener('dragstart', (ev) => ev.preventDefault());
         thumb.addEventListener('contextmenu', (ev) => ev.preventDefault());
-        thumb.addEventListener('touchstart', (ev) => { if (ev.touches && ev.touches.length === 1) ev.preventDefault(); }, { passive: false });
       }
     });
     row.appendChild(b);
@@ -913,41 +910,28 @@ function openSnapLens() {
     });
     if (sent) return;
   }
-  // 2) Navigateur classique.
-  if (appUrl && appUrl !== url) {
+  // 2) Navigateur classique. Use platform-specific approach to avoid chooser/blank pages.
+  const ua = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(ua);
+  const isIOS = /iP(hone|od|ad)/i.test(ua);
+  if (isAndroid && url) {
     try {
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = appUrl;
-      document.body.appendChild(iframe);
-      const fallback = setTimeout(() => {
-        if (!document.hidden) location.href = url;
-      }, 700);
-      const cleanup = () => {
-        clearTimeout(fallback);
-        window.removeEventListener('visibilitychange', cleanup);
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      };
-      window.addEventListener('visibilitychange', cleanup);
+      const parsed = new URL(url);
+      const path = parsed.pathname + (parsed.search || '') + (parsed.hash || '');
+      const intentUrl = `intent://${parsed.hostname}${path}#Intent;scheme=${parsed.protocol.replace(':','')};package=com.snapchat.android;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+      location.href = intentUrl;
+      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
       return;
-    } catch (e) {
-      console.warn('[Seddo] Échec du lancement Snapchat via iframe :', e);
-    }
+    } catch (e) { console.warn('[Seddo] intent:// build failed', e); }
   }
-  try { location.href = url; return; } catch {}
-  let win = null;
-  try { win = window.open(url, '_blank'); } catch {}
-  if (!win) {
+  if (isIOS && appUrl && appUrl !== url) {
     try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_self';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch {}
+      location.href = appUrl; // safari will open snapchat:// if installed
+      setTimeout(() => { if (!document.hidden) location.href = url; }, 800);
+      return;
+    } catch (e) { console.warn('[Seddo] iOS open failed', e); }
   }
+  try { location.href = appUrl || url; return; } catch (e) { console.warn('[Seddo] final open failed', e); }
 }
 
 /* ---------- Indice « maintiens pour ouvrir sur Snapchat » ---------- */
